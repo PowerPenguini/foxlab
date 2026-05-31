@@ -1224,10 +1224,16 @@ func helperMount(req helperRequest) (helperResponse, error) {
 	if out, err := exec.Command("qemu-nbd", "--read-only", "--connect", nbd, image).CombinedOutput(); err != nil {
 		return helperResponse{}, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
-	_ = exec.Command("udevadm", "settle").Run()
-	source := mountedBlockSource(nbd)
+	triggerPartitionScan(nbd)
+	source, err := mountableBlockSource(nbd)
+	if err != nil {
+		_ = exec.Command("qemu-nbd", "--disconnect", nbd).Run()
+		_ = os.Remove(mountPoint)
+		return helperResponse{}, err
+	}
 	if out, err := exec.Command("mount", "-o", "ro", source, mountPoint).CombinedOutput(); err != nil {
 		_ = exec.Command("qemu-nbd", "--disconnect", nbd).Run()
+		_ = os.Remove(mountPoint)
 		return helperResponse{}, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
 	return helperResponse{MountPoint: mountPoint, NBD: nbd, Backend: "qemu-nbd"}, nil
@@ -1273,14 +1279,104 @@ func freeNBD() (string, error) {
 	return "", fmt.Errorf("no free /dev/nbd device found")
 }
 
-func mountedBlockSource(nbd string) string {
+func triggerPartitionScan(nbd string) {
+	_ = exec.Command("partprobe", nbd).Run()
+	_ = exec.Command("blockdev", "--rereadpt", nbd).Run()
+	_ = exec.Command("udevadm", "settle").Run()
+	for i := 0; i < 20; i++ {
+		if _, err := os.Stat(fmt.Sprintf("%sp1", nbd)); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func mountableBlockSource(nbd string) (string, error) {
+	out, err := exec.Command("lsblk", "-J", "-p", "-o", "NAME,TYPE,FSTYPE", nbd).CombinedOutput()
+	if err == nil {
+		if source, found := chooseMountSourceFromLSBLK(out); found {
+			return source, nil
+		}
+		return "", fmt.Errorf("no mountable filesystem found on %s; the image may be empty, unpartitioned, encrypted, or use an unsupported layout", nbd)
+	}
 	for i := 1; i <= 16; i++ {
 		part := fmt.Sprintf("%sp%d", nbd, i)
 		if _, err := os.Stat(part); err == nil {
-			return part
+			return part, nil
 		}
 	}
-	return nbd
+	if _, err := os.Stat(nbd); err == nil {
+		return nbd, nil
+	}
+	return "", fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+}
+
+type lsblkResponse struct {
+	BlockDevices []lsblkDevice `json:"blockdevices"`
+}
+
+type lsblkDevice struct {
+	Name     string        `json:"name"`
+	Type     string        `json:"type"`
+	FSType   string        `json:"fstype"`
+	Children []lsblkDevice `json:"children"`
+}
+
+func chooseMountSourceFromLSBLK(raw []byte) (string, bool) {
+	var parsed lsblkResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", false
+	}
+	var devices []lsblkDevice
+	for _, device := range parsed.BlockDevices {
+		flattenLSBLKDevice(device, &devices)
+	}
+	if source, found := bestMountSource(devices, "part"); found {
+		return source, true
+	}
+	if source, found := bestMountSource(devices, "disk"); found {
+		return source, true
+	}
+	return "", false
+}
+
+func bestMountSource(devices []lsblkDevice, deviceType string) (string, bool) {
+	bestSource := ""
+	bestRank := 100
+	for _, device := range devices {
+		if device.Type != deviceType || device.FSType == "" || !filepath.IsAbs(device.Name) {
+			continue
+		}
+		rank := filesystemMountRank(device.FSType)
+		if rank == 0 {
+			continue
+		}
+		if bestSource == "" || rank < bestRank {
+			bestSource = device.Name
+			bestRank = rank
+		}
+	}
+	return bestSource, bestSource != ""
+}
+
+func filesystemMountRank(fsType string) int {
+	switch strings.ToLower(fsType) {
+	case "ext4", "ext3", "ext2", "xfs", "btrfs", "f2fs":
+		return 1
+	case "vfat", "fat", "exfat", "ntfs":
+		return 2
+	case "swap", "crypto_luks", "lvm2_member", "linux_raid_member":
+		return 0
+	default:
+		return 3
+	}
+}
+
+func flattenLSBLKDevice(device lsblkDevice, out *[]lsblkDevice) {
+	*out = append(*out, device)
+	for _, child := range device.Children {
+		flattenLSBLKDevice(child, out)
+	}
 }
 
 func cleanNBD(path string) (string, error) {

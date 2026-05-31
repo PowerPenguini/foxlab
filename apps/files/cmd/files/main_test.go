@@ -114,6 +114,48 @@ func TestMountBackend(t *testing.T) {
 	}
 }
 
+func TestChooseMountSourceFromLSBLKPrefersFilesystemPartition(t *testing.T) {
+	source, ok := chooseMountSourceFromLSBLK([]byte(`{
+  "blockdevices": [
+    {
+      "name": "/dev/nbd0",
+      "type": "disk",
+      "fstype": null,
+      "children": [
+        {"name": "/dev/nbd0p1", "type": "part", "fstype": "vfat"},
+        {"name": "/dev/nbd0p2", "type": "part", "fstype": "ext4"},
+        {"name": "/dev/nbd0p3", "type": "part", "fstype": "swap"}
+      ]
+    }
+  ]
+}`))
+	if !ok || source != "/dev/nbd0p2" {
+		t.Fatalf("source = %q ok=%v", source, ok)
+	}
+}
+
+func TestChooseMountSourceFromLSBLKAcceptsUnpartitionedFilesystem(t *testing.T) {
+	source, ok := chooseMountSourceFromLSBLK([]byte(`{
+  "blockdevices": [
+    {"name": "/dev/nbd0", "type": "disk", "fstype": "ext4"}
+  ]
+}`))
+	if !ok || source != "/dev/nbd0" {
+		t.Fatalf("source = %q ok=%v", source, ok)
+	}
+}
+
+func TestChooseMountSourceFromLSBLKRejectsEmptyDisk(t *testing.T) {
+	source, ok := chooseMountSourceFromLSBLK([]byte(`{
+  "blockdevices": [
+    {"name": "/dev/nbd0", "type": "disk", "fstype": null}
+  ]
+}`))
+	if ok || source != "" {
+		t.Fatalf("source = %q ok=%v", source, ok)
+	}
+}
+
 func TestInsideRuntimeMountRootAcceptsTmpFallback(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "foxlab", "files", "mounts", "abc")
 	if !insideRuntimeMountRoot(path) {
