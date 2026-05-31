@@ -990,7 +990,7 @@ function portOffsets(plans) {
   for (const [, items] of groups) {
     items.sort((a, b) => a.sort - b.sort || a.edge.key.localeCompare(b.edge.key));
     for (let i = 0; i < items.length; i++) {
-      offsets.set(`${items[i].edge.key}:${items[i].end}`, (i - (items.length - 1) / 2) * routeLaneGap);
+      offsets.set(`${items[i].edge.key}:${items[i].end}`, sidePortOffset(items[i].side, i, items.length));
     }
   }
   return offsets;
@@ -1003,7 +1003,17 @@ function addPortPlan(groups, edge, end) {
   const key = `${endpointKey(endpoint)}:${side}`;
   const sort = side === 'left' || side === 'right' ? otherRect.cy : otherRect.cx;
   if (!groups.has(key)) groups.set(key, []);
-  groups.get(key).push({ edge, end, sort });
+  groups.get(key).push({ edge, end, side, sort });
+}
+
+function sidePortOffset(side, index, count) {
+  if (count <= 1) return 0;
+  const span = side === 'top' || side === 'bottom'
+    ? nodeWidth - routeGap * 2
+    : Math.max(routeLaneGap * 2, nodeHeight - gridSize * 2);
+  const maxSteps = Math.max(1, Math.floor(span / (gridSize * 2)));
+  const lane = -maxSteps + (maxSteps * 2 * index) / (count - 1);
+  return snapValue(lane * gridSize);
 }
 
 function routeBetweenNodes(plan, obstacles, usedSegments, offsets) {
@@ -1073,7 +1083,7 @@ function routeScore(points, segments, obstacles, usedSegments, endpointKeys) {
     }
     for (const used of usedSegments) {
       if (segmentsOverlap(segment, used)) score += 300 + overlapLength(segment, used);
-      else if (segmentsCross(segment, used)) score += 80;
+      else if (segmentsCross(segment, used)) score += 1500;
     }
   }
   return score;
@@ -1224,7 +1234,7 @@ function segmentsCross(a, b) {
   const h = a.horizontal ? a : b.horizontal ? b : null;
   const v = a.vertical ? a : b.vertical ? b : null;
   if (!h || !v) return false;
-  return between(v.x1, h.x1, h.x2) && between(h.y1, v.y1, v.y2);
+  return betweenStrict(v.x1, h.x1, h.x2) && betweenStrict(h.y1, v.y1, v.y2);
 }
 
 function rangeOverlap(a1, a2, b1, b2) {
@@ -1237,6 +1247,10 @@ function rangeOverlap(a1, a2, b1, b2) {
 
 function between(value, a, b) {
   return value >= Math.min(a, b) && value <= Math.max(a, b);
+}
+
+function betweenStrict(value, a, b) {
+  return value > Math.min(a, b) && value < Math.max(a, b);
 }
 
 function snapValue(value) {
