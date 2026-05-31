@@ -665,7 +665,7 @@ function Inspector({ lab, setLab, selected, object, status, isos, networkInterfa
         <label className="check">
           <input className="check-input" type="checkbox" checked={!!object.vnc} onChange={(e) => updateVM(lab, setLab, object.id, { vnc: e.target.checked })} />
           <span className="check-mark" aria-hidden="true" />
-          <span>VNC console</span>
+          <span>Enable VNC</span>
         </label>
         <ConsoleInfo lab={lab} vm={object} />
       </div>
@@ -730,24 +730,26 @@ function ResourceSection({ title, rows }) {
 function ConsoleInfo({ lab, vm }) {
   const [info, setInfo] = useState(null);
   const [state, setState] = useState('idle');
-  async function loadConsole() {
-    setState('opening');
+  async function openConsole(kind) {
+    setState(`${kind} opening`);
     setInfo(null);
+    const path = kind === 'text' ? 'text-console' : 'console';
     try {
-      const data = await apiJSON(`/api/labs/${lab.id}/vms/${vm.id}/console/open`, {
+      const data = await apiJSON(`/api/labs/${lab.id}/vms/${vm.id}/${path}/open`, {
         method: 'POST',
       });
       setInfo(data);
-      setState('opened');
+      setState(`${kind} opened`);
     } catch (err) {
       setInfo({ error: err.message || 'Console unavailable' });
-      setState('error');
+      setState(`${kind} error`);
     }
   }
   return (
     <section className="console">
       <div className="console-actions">
-        <button onClick={loadConsole} disabled={state === 'opening'}>./console</button>
+        <button onClick={() => openConsole('vnc')} disabled={state === 'vnc opening' || !vm.vnc}>VNC console</button>
+        <button onClick={() => openConsole('text')} disabled={state === 'text opening'}>Text console</button>
       </div>
       {info?.error && <p className="message-error">{info.error}</p>}
       {state !== 'idle' && !info?.error && <p>console {state}</p>}

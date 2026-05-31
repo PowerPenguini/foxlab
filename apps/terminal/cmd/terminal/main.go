@@ -36,6 +36,7 @@ func main() {
 	addr := fs.String("addr", "127.0.0.1:8092", "HTTP listen address")
 	workspace := fs.String("workspace", ".", "workspace directory")
 	uri := fs.String("uri", "", "libvirt URI")
+	command := fs.String("command", "", "command to run instead of the default shell")
 	wmAddr := fs.String("wm-addr", "", "window manager gRPC address")
 	wmAppID := fs.String("wm-app-id", "terminal", "window manager app id")
 	wmName := fs.String("wm-name", "Terminal", "window manager app name")
@@ -53,6 +54,7 @@ func main() {
 	app := &terminalApp{
 		workspace: cleanWorkspace(*workspace),
 		shell:     defaultShell(),
+		command:   *command,
 		static:    filepath.Join("web", "dist"),
 		wmAddr:    *wmAddr,
 		closeRequest: wm.CloseWindowRequest{
@@ -94,6 +96,7 @@ func main() {
 type terminalApp struct {
 	workspace    string
 	shell        string
+	command      string
 	static       string
 	wmAddr       string
 	closeRequest wm.CloseWindowRequest
@@ -153,7 +156,7 @@ func (a *terminalApp) terminalWebsocket(w http.ResponseWriter, r *http.Request) 
 	}
 	defer client.Close()
 
-	cmd := exec.Command(a.shell)
+	cmd := terminalCommand(a.shell, a.command)
 	cmd.Dir = a.workspace
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
 	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: defaultRows, Cols: defaultCols})
@@ -270,6 +273,13 @@ func defaultShell() string {
 		return shell
 	}
 	return "/bin/sh"
+}
+
+func terminalCommand(shell, command string) *exec.Cmd {
+	if command == "" {
+		return exec.Command(shell)
+	}
+	return exec.Command(shell, "-lc", command)
 }
 
 func cleanWorkspace(workspace string) string {

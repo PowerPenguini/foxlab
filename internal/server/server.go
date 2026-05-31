@@ -273,6 +273,9 @@ func (s *Server) handleLab(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/console/open") && r.Method == http.MethodPost:
 		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/console/open")
 		s.openConsoleResponse(w, labID, vmID)
+	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/text-console/open") && r.Method == http.MethodPost:
+		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/text-console/open")
+		s.openTextConsoleResponse(w, labID, vmID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -421,6 +424,29 @@ func (s *Server) statusLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, status)
 }
 
+func (s *Server) openTextConsoleResponse(w http.ResponseWriter, labID, vmID string) {
+	if s.cfg.WMAddr == "" {
+		writeError(w, fmt.Errorf("wm grpc server is not available"), http.StatusInternalServerError)
+		return
+	}
+	loaded, err := s.findLab(labID)
+	if err != nil {
+		writeError(w, err, statusFor(err))
+		return
+	}
+	vm, ok := labVMByID(loaded, vmID)
+	if !ok {
+		writeError(w, fmt.Errorf("vm %q not found", vmID), http.StatusNotFound)
+		return
+	}
+	status, err := s.launchTextConsole(loaded, vm)
+	if err != nil {
+		writeError(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, status)
+}
+
 func (s *Server) openConsoleResponse(w http.ResponseWriter, labID, vmID string) {
 	if s.cfg.WMAddr == "" {
 		writeError(w, fmt.Errorf("wm grpc server is not available"), http.StatusInternalServerError)
@@ -511,6 +537,95 @@ func (s *Server) launchVNCViewer(loaded *lab.Lab, vmID string, info *virt.Consol
 	status.State = "running"
 	status.URL = url
 	return status, nil
+}
+
+func (s *Server) launchTextConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, error) {
+	def, err := s.discoverAppDefinition("terminal")
+	if err != nil {
+		return AppStatus{}, err
+	}
+	extractDir, err := os.MkdirTemp("", "foxapp-terminal-*")
+	if err != nil {
+		return AppStatus{}, err
+	}
+	cleanup := func() { _ = os.RemoveAll(extractDir) }
+	if err := foxapp.Extract(def.PackagePath, extractDir); err != nil {
+		cleanup()
+		return AppStatus{}, err
+	}
+	manifest, err := foxapp.LoadManifestDir(extractDir)
+	if err != nil {
+		cleanup()
+		return AppStatus{}, err
+	}
+	addr, err := freeLoopbackAddr()
+	if err != nil {
+		cleanup()
+		return AppStatus{}, err
+	}
+	label := fmt.Sprintf("%s / %s", loaded.ID, vm.ID)
+	cmd := foxapp.PackageCommand(extractDir, manifest, foxapp.Runtime{
+		Addr:       addr,
+		Workspace:  s.cfg.Workspace,
+		LibvirtURI: s.cfg.LibvirtURI,
+		WMAddr:     s.cfg.WMAddr,
+		WMTitle:    "Text console " + label,
+		ExtraArgs: []string{
+			"--command", "exec " + shellJoin(virshConsoleCommand(s.cfg.LibvirtURI, loaded.ManagedDomainName(vm))),
+		},
+	})
+	if err := cmd.Start(); err != nil {
+		cleanup()
+		return AppStatus{}, err
+	}
+	proc := &appProcess{done: make(chan struct{})}
+	go func() {
+		proc.err = cmd.Wait()
+		close(proc.done)
+	}()
+	url := foxapp.URLForAddr(addr)
+	s.trackConsoleApp(cmd, cleanup, proc, manifest, url)
+	if err := waitForAppReady(url+manifest.Health.Path, proc); err != nil {
+		_ = cmd.Process.Kill()
+		<-proc.done
+		return AppStatus{}, err
+	}
+	status := statusForManifest(manifest)
+	status.State = "running"
+	status.URL = url
+	return status, nil
+}
+
+func virshConsoleCommand(uri, domain string) []string {
+	args := []string{"virsh"}
+	if uri != "" {
+		args = append(args, "-c", uri)
+	}
+	return append(args, "console", domain)
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, 0, len(args))
+	for _, arg := range args {
+		quoted = append(quoted, shellQuote(arg))
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(arg string) string {
+	if arg == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
+}
+
+func labVMByID(loaded *lab.Lab, vmID string) (lab.VM, bool) {
+	for _, vm := range loaded.VMs {
+		if vm.ID == vmID {
+			return vm, true
+		}
+	}
+	return lab.VM{}, false
 }
 
 func (s *Server) discoverAppDefinition(id string) (AppDefinition, error) {

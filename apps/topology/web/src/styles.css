@@ -130,6 +130,29 @@ button:active {
   color: var(--term-inverse);
 }
 
+button:disabled {
+  color: var(--term-muted);
+  opacity: 0.55;
+}
+
+button:disabled:hover,
+button:disabled:focus-visible {
+  background: transparent;
+  color: var(--term-muted);
+}
+
+button:disabled:hover::before,
+button:disabled:focus-visible::before {
+  content: "[";
+  color: var(--ansi-magenta);
+}
+
+button:disabled:hover::after,
+button:disabled:focus-visible::after {
+  content: "]";
+  color: var(--ansi-magenta);
+}
+
 input {
   width: 100%;
   min-width: 0;

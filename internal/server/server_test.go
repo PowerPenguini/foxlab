@@ -225,6 +225,46 @@ func TestTopologyLaunchesVNCViewerPackageWithConsoleTarget(t *testing.T) {
 	}
 }
 
+func TestTopologyLaunchesTerminalPackageWithTextConsoleTarget(t *testing.T) {
+	chdirRepoRoot(t)
+	appDir := t.TempDir()
+	argsPath := filepath.Join(t.TempDir(), "args.txt")
+	packageRecordingTerminal(t, appDir)
+	t.Setenv("ARGS_FILE", argsPath)
+
+	topology := &Server{cfg: Config{
+		Workspace:  t.TempDir(),
+		LibvirtURI: "qemu:///system",
+		WMAddr:     "127.0.0.1:1",
+		AppDirs:    []string{appDir},
+	}}
+	status, err := topology.launchTextConsole(
+		&lab.Lab{ID: "demo"},
+		lab.VM{ID: "vm1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(topology.stopConsoleApps)
+	if status.State != "running" || status.ID != "terminal" {
+		t.Fatalf("unexpected terminal status: %+v", status)
+	}
+	data, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := string(data)
+	for _, want := range []string{
+		"--wm-app-id=terminal",
+		"--wm-title=Text console demo / vm1",
+		"--command=exec 'virsh' '-c' 'qemu:///system' 'console' 'foxlab-demo-vm1'",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("recorded terminal args missing %q:\n%s", want, args)
+		}
+	}
+}
+
 func TestTopologyISOsListsDownloadsAndPrefersAlpine(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
@@ -272,6 +312,37 @@ func TestTopologyListsNetworkInterfaces(t *testing.T) {
 	}
 }
 
+func packageRecordingTerminal(t *testing.T, outDir string) {
+	t.Helper()
+	srcDir := t.TempDir()
+	binPath := filepath.Join(srcDir, "bin", "terminal")
+	writeTestFile(t, filepath.Join(srcDir, foxapp.ManifestFile), `{
+  "format": "foxapp.v1",
+  "id": "terminal",
+  "name": "Terminal",
+  "version": "0.1.0",
+  "run": {"command": "bin/terminal"},
+  "icon": {"type": "builtin", "value": "terminal"},
+  "window": {"title": "Terminal", "path": "/"},
+  "health": {"path": "/healthz"},
+  "web": {"dist": "web/dist"}
+}`)
+	writeTestFile(t, filepath.Join(srcDir, "web", "dist", "index.html"), "<!doctype html>")
+	sourcePath := filepath.Join(t.TempDir(), "main.go")
+	writeTestFile(t, sourcePath, recordingAppSource())
+	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, sourcePath)
+	cmd.Env = append(os.Environ(), "GOCACHE=/tmp/foxlab-go-cache", "GOPROXY=off")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build recording terminal: %v\n%s", err, output)
+	}
+	if err := foxapp.Package(srcDir, filepath.Join(outDir, "terminal.foxapp")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func packageRecordingVNCViewer(t *testing.T, outDir string) {
 	t.Helper()
 	srcDir := t.TempDir()
@@ -289,7 +360,22 @@ func packageRecordingVNCViewer(t *testing.T, outDir string) {
 }`)
 	writeTestFile(t, filepath.Join(srcDir, "web", "dist", "index.html"), "<!doctype html>")
 	sourcePath := filepath.Join(t.TempDir(), "main.go")
-	writeTestFile(t, sourcePath, `package main
+	writeTestFile(t, sourcePath, recordingAppSource())
+	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, sourcePath)
+	cmd.Env = append(os.Environ(), "GOCACHE=/tmp/foxlab-go-cache", "GOPROXY=off")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build recording VNC viewer: %v\n%s", err, output)
+	}
+	if err := foxapp.Package(srcDir, filepath.Join(outDir, "vnc-viewer.foxapp")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func recordingAppSource() string {
+	return `package main
 
 import (
 	"fmt"
@@ -318,24 +404,13 @@ func main() {
 		panic(err)
 	}
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, `+"`"+`{"status":"ok"}`+"`"+`)
+		fmt.Fprintln(w, ` + "`" + `{"status":"ok"}` + "`" + `)
 	})
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		panic(err)
 	}
 }
-`)
-	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, sourcePath)
-	cmd.Env = append(os.Environ(), "GOCACHE=/tmp/foxlab-go-cache", "GOPROXY=off")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build recording VNC viewer: %v\n%s", err, output)
-	}
-	if err := foxapp.Package(srcDir, filepath.Join(outDir, "vnc-viewer.foxapp")); err != nil {
-		t.Fatal(err)
-	}
+`
 }
 
 func assertStatus(t *testing.T, srv *http.Server, method, path string, want int) {
