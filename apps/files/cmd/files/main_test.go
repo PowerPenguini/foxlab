@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -83,6 +84,14 @@ func TestQemuInfoJSONShape(t *testing.T) {
 	}
 	if info.Format != "qcow2" || info.VirtualSize != 1073741824 || info.BackingFilename != "base.qcow2" {
 		t.Fatalf("unexpected info: %#v", info)
+	}
+}
+
+func TestQemuInfoCommandUsesForceShare(t *testing.T) {
+	cmd := qemuImgInfoCommand(context.Background(), "/tmp/disk.qcow2")
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, " -U ") {
+		t.Fatalf("qemu-img info must use -U for running VM disks, got %q", args)
 	}
 }
 

@@ -845,7 +845,7 @@ func shouldSkipScanDir(path string) bool {
 }
 
 func qemuImgInfo(ctx context.Context, path string) (qemuInfo, error) {
-	cmd := exec.CommandContext(ctx, "qemu-img", "info", "--output=json", path)
+	cmd := qemuImgInfoCommand(ctx, path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return qemuInfo{}, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
@@ -858,6 +858,10 @@ func qemuImgInfo(ctx context.Context, path string) (qemuInfo, error) {
 		info.Filename = path
 	}
 	return info, nil
+}
+
+func qemuImgInfoCommand(ctx context.Context, path string) *exec.Cmd {
+	return exec.CommandContext(ctx, "qemu-img", "info", "-U", "--output=json", path)
 }
 
 func backingChain(ctx context.Context, path string) ([]layerInfo, error) {
