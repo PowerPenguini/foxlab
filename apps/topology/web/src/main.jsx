@@ -1065,6 +1065,7 @@ function candidateRoutes(start, startExit, endExit, end, fromRect, toRect, usedS
   const rightLane = snapValue(Math.max(fromRect.right, toRect.right) + routeGap);
   const topLane = snapValue(Math.min(fromRect.top, toRect.top) - routeGap);
   const bottomLane = snapValue(Math.max(fromRect.bottom, toRect.bottom) + routeGap);
+  const endStub = stubPoint(end, endExit, gridSize);
   const horizontalLanes = routeLanes(
     [midY, topLane, bottomLane, startExit.y, endExit.y],
     usedSegments.filter((segment) => segment.horizontal).map((segment) => segment.y1)
@@ -1085,13 +1086,20 @@ function candidateRoutes(start, startExit, endExit, end, fromRect, toRect, usedS
   ];
   for (const lane of horizontalLanes) {
     routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: endExit.x, y: lane }, endExit, end]));
-    routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: end.x, y: lane }, end]));
+    routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: endStub.x, y: lane }, endStub, end]));
   }
   for (const lane of verticalLanes) {
     routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: endExit.y }, endExit, end]));
-    routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: end.y }, end]));
+    routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: endStub.y }, endStub, end]));
   }
   return routes;
+}
+
+function stubPoint(point, exitPoint, distance) {
+  return {
+    x: point.x + Math.sign(exitPoint.x - point.x) * distance,
+    y: point.y + Math.sign(exitPoint.y - point.y) * distance,
+  };
 }
 
 function routeLanes(baseLanes, occupiedLanes) {
