@@ -21,7 +21,6 @@ function App() {
   const [message, setMessage] = useState('');
   const [launching, setLaunching] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
-  const [desktopPath, setDesktopPath] = useState('');
   const [desktopListing, setDesktopListing] = useState(null);
 
   useEffect(() => {
@@ -44,8 +43,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadDesktopPath(desktopPath);
-  }, [desktopPath]);
+    loadDesktopPath();
+  }, []);
 
   useEffect(() => {
     const events = new EventSource('/api/wm/events');
@@ -168,7 +167,7 @@ function App() {
 
   function openDesktopEntry(entry) {
     if (entry.type === 'dir') {
-      setDesktopPath(entry.path);
+      openInFiles(entry.path);
       return;
     }
     openInFiles(parentPath(entry.path));
@@ -264,10 +263,7 @@ function App() {
   const visibleWindows = windows.filter((item) => !item.minimized);
   const activeWindow = windows.find((item) => item.id === activeWindowId);
   const barStatus = message || (activeWindow ? taskbarLabel(activeWindow.appMeta) : windows.length > 0 ? `${windows.length} windows` : 'ready');
-  const desktopEntries = desktopListing ? [
-    ...(desktopListing.parent ? [{ name: '..', path: desktopListing.parent, type: 'dir', parent: true }] : []),
-    ...(desktopListing.entries || []),
-  ] : [];
+  const desktopEntries = desktopListing?.entries || [];
 
   return (
     <div className="desktop">
