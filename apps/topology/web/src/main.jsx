@@ -677,11 +677,6 @@ function Inspector({ lab, setLab, selected, object, status, isos, networkInterfa
         <h2>{object.id}</h2>
         <Field label="Name" value={object.name || ''} onChange={(value) => updateSwitch(lab, setLab, object.id, { name: value })} />
         <SwitchModeField value={object.mode || 'bridge'} onChange={(value) => updateSwitchMode(lab, setLab, object.id, value)} />
-        <SwitchLinkField
-          value={object.externalLink || ''}
-          links={lab.externalLinks || []}
-          onChange={(value) => updateSwitchExternalLink(lab, setLab, object.id, value)}
-        />
       </div>
     );
   }
@@ -820,23 +815,6 @@ function SwitchModeField({ value, onChange }) {
   );
 }
 
-function SwitchLinkField({ value, links, onChange }) {
-  const items = Array.isArray(links) ? links : [];
-  const hasValue = value && items.some((item) => item.id === value);
-  return (
-    <label>
-      Uplink
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">none</option>
-        {value && !hasValue && <option value={value}>{value}</option>}
-        {items.map((link) => (
-          <option key={link.id} value={link.id}>{link.name || link.id}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 function interfaceLabel(item) {
   if (!item?.flags) return item?.name || '';
   return `${item.name} ${item.flags}`;
@@ -857,20 +835,6 @@ function updateSwitchMode(lab, setLab, id, mode) {
       return { ...sw, mode };
     });
     return { ...current, switches };
-  });
-}
-
-function updateSwitchExternalLink(lab, setLab, id, externalLink) {
-  setLab((current) => {
-    const switches = (current.switches || []).map((sw) => {
-      if (sw.id !== id) return sw;
-      return { ...sw, mode: sw.mode || 'bridge', externalLink };
-    });
-    let layout = removeSwitchExternalLinks(current.layout, id);
-    if (externalLink) {
-      layout = addLayoutLink(layout, { type: 'switch', id }, { type: 'external', id: externalLink });
-    }
-    return { ...current, switches, layout };
   });
 }
 
