@@ -21,6 +21,14 @@ body,
 body {
   overflow: hidden;
   background: #020303;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.xterm {
+  user-select: text;
 }
 
 .terminal-shell {

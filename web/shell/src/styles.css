@@ -55,6 +55,14 @@ body {
   background:
     repeating-linear-gradient(0deg, rgba(214, 214, 214, 0.026), rgba(214, 214, 214, 0.026) 1px, transparent 1px, transparent 5px),
     var(--term-bg);
+  user-select: none;
+}
+
+input,
+select,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
 }
 
 button,

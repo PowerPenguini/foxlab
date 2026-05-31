@@ -20,6 +20,13 @@ body,
 
 body {
   overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
 }
 
 .viewer-shell {
