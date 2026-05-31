@@ -1,0 +1,23 @@
+{
+  "format": "foxapp.v1",
+  "id": "files",
+  "name": "Files",
+  "version": "0.1.0",
+  "run": {
+    "command": "bin/files"
+  },
+  "icon": {
+    "type": "builtin",
+    "value": "folder"
+  },
+  "window": {
+    "title": "Files",
+    "path": "/"
+  },
+  "health": {
+    "path": "/healthz"
+  },
+  "web": {
+    "dist": "web/dist"
+  }
+}
