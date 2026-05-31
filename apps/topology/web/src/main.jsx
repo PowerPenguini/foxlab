@@ -999,11 +999,21 @@ function portOffsets(plans) {
 function addPortPlan(groups, edge, end) {
   const endpoint = edge[end];
   const side = edge[`${end}Side`];
+  const rect = edge[`${end}Rect`];
   const otherRect = edge[end === 'from' ? 'toRect' : 'fromRect'];
   const key = `${endpointKey(endpoint)}:${side}`;
-  const sort = side === 'left' || side === 'right' ? otherRect.cy : otherRect.cx;
+  const sort = portSortValue(side, rect, otherRect);
   if (!groups.has(key)) groups.set(key, []);
   groups.get(key).push({ edge, end, side, sort });
+}
+
+function portSortValue(side, rect, otherRect) {
+  const dx = otherRect.cx - rect.cx;
+  const dy = otherRect.cy - rect.cy;
+  if (side === 'left' || side === 'right') {
+    return Math.atan2(dy, Math.max(gridSize, Math.abs(dx)));
+  }
+  return Math.atan2(dx, Math.max(gridSize, Math.abs(dy)));
 }
 
 function sidePortOffset(side, index, count) {
@@ -1023,7 +1033,7 @@ function routeBetweenNodes(plan, obstacles, usedSegments, offsets) {
   const end = portPoint(plan.toRect, plan.toSide, toOffset);
   const startExit = moveOut(start, plan.fromSide, routeGap);
   const endExit = moveOut(end, plan.toSide, routeGap);
-  const candidates = candidateRoutes(start, startExit, endExit, end, plan.fromRect, plan.toRect);
+  const candidates = candidateRoutes(start, startExit, endExit, end, plan.fromRect, plan.toRect, usedSegments);
   return bestRoute(candidates, obstacles, usedSegments, [endpointKey(plan.from), endpointKey(plan.to)]);
 }
 
@@ -1040,15 +1050,22 @@ function routePathToPoint(from, fromPoint, point, obstacles) {
   return bestRoute(candidates, obstacles, [], [endpointKey(from)]).d;
 }
 
-function candidateRoutes(start, startExit, endExit, end, fromRect, toRect) {
+function candidateRoutes(start, startExit, endExit, end, fromRect, toRect, usedSegments = []) {
   const midX = snapValue((startExit.x + endExit.x) / 2);
   const midY = snapValue((startExit.y + endExit.y) / 2);
   const leftLane = snapValue(Math.min(fromRect.left, toRect.left) - routeGap);
   const rightLane = snapValue(Math.max(fromRect.right, toRect.right) + routeGap);
   const topLane = snapValue(Math.min(fromRect.top, toRect.top) - routeGap);
   const bottomLane = snapValue(Math.max(fromRect.bottom, toRect.bottom) + routeGap);
-
-  return [
+  const horizontalLanes = routeLanes(
+    [midY, topLane, bottomLane, startExit.y, endExit.y],
+    usedSegments.filter((segment) => segment.horizontal).map((segment) => segment.y1)
+  ).filter((lane) => laneOutsideRects(lane, 'y', fromRect, toRect));
+  const verticalLanes = routeLanes(
+    [midX, leftLane, rightLane, startExit.x, endExit.x],
+    usedSegments.filter((segment) => segment.vertical).map((segment) => segment.x1)
+  ).filter((lane) => laneOutsideRects(lane, 'x', fromRect, toRect));
+  const routes = [
     compactRoute([start, startExit, { x: midX, y: startExit.y }, { x: midX, y: endExit.y }, endExit, end]),
     compactRoute([start, startExit, { x: startExit.x, y: midY }, { x: endExit.x, y: midY }, endExit, end]),
     compactRoute([start, startExit, { x: endExit.x, y: startExit.y }, endExit, end]),
@@ -1058,6 +1075,34 @@ function candidateRoutes(start, startExit, endExit, end, fromRect, toRect) {
     compactRoute([start, startExit, { x: leftLane, y: startExit.y }, { x: leftLane, y: endExit.y }, endExit, end]),
     compactRoute([start, startExit, { x: rightLane, y: startExit.y }, { x: rightLane, y: endExit.y }, endExit, end]),
   ];
+  for (const lane of horizontalLanes) {
+    routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: endExit.x, y: lane }, endExit, end]));
+  }
+  for (const lane of verticalLanes) {
+    routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: endExit.y }, endExit, end]));
+  }
+  return routes;
+}
+
+function routeLanes(baseLanes, occupiedLanes) {
+  const lanes = new Set();
+  for (const lane of baseLanes) {
+    lanes.add(snapValue(lane));
+  }
+  for (const lane of occupiedLanes) {
+    lanes.add(snapValue(lane - routeGap));
+    lanes.add(snapValue(lane + routeGap));
+  }
+  return [...lanes];
+}
+
+function laneOutsideRects(lane, axis, a, b) {
+  return laneOutsideRect(lane, axis, a) && laneOutsideRect(lane, axis, b);
+}
+
+function laneOutsideRect(lane, axis, rect) {
+  if (axis === 'x') return lane <= rect.left - routeGap || lane >= rect.right + routeGap;
+  return lane <= rect.top - routeGap || lane >= rect.bottom + routeGap;
 }
 
 function bestRoute(candidates, obstacles, usedSegments, endpointKeys) {
@@ -1234,7 +1279,7 @@ function segmentsCross(a, b) {
   const h = a.horizontal ? a : b.horizontal ? b : null;
   const v = a.vertical ? a : b.vertical ? b : null;
   if (!h || !v) return false;
-  return betweenStrict(v.x1, h.x1, h.x2) && betweenStrict(h.y1, v.y1, v.y2);
+  return between(v.x1, h.x1, h.x2) && between(h.y1, v.y1, v.y2);
 }
 
 function rangeOverlap(a1, a2, b1, b2) {
@@ -1247,10 +1292,6 @@ function rangeOverlap(a1, a2, b1, b2) {
 
 function between(value, a, b) {
   return value >= Math.min(a, b) && value <= Math.max(a, b);
-}
-
-function betweenStrict(value, a, b) {
-  return value > Math.min(a, b) && value < Math.max(a, b);
 }
 
 function snapValue(value) {
