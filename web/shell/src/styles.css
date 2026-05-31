@@ -672,19 +672,53 @@ input:-webkit-autofill:focus {
   right: 0;
   bottom: 0;
   z-index: 3;
-  min-height: 28px;
-  display: flex;
+  height: 32px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  border-top: 1px solid #3f4542;
-  background: #080909;
-  color: #c7cbc8;
+  gap: 0;
+  padding: 0;
+  border-top: 1px solid var(--term-border-strong);
+  background:
+    linear-gradient(180deg, rgba(199, 203, 200, 0.055), transparent 42%),
+    var(--term-panel);
+  color: var(--term-ink);
   font-family: inherit;
   font-size: 12px;
   text-transform: none;
-  box-shadow: 0 -1px 0 #000, 0 -8px 20px rgba(190, 198, 192, 0.035);
+  box-shadow: 0 -1px 0 #000;
   overflow: hidden;
+}
+
+.desktop-bar-brand,
+.taskbar-list,
+.desktop-bar-status {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.desktop-bar-brand {
+  padding: 0 8px;
+  border-right: 1px solid var(--term-border);
+  background: var(--term-panel-2);
+}
+
+.taskbar-list {
+  gap: 1px;
+  padding: 0 6px;
+  overflow: hidden;
+}
+
+.desktop-bar-status {
+  justify-content: flex-end;
+  gap: 1ch;
+  max-width: 42vw;
+  padding: 0 10px;
+  border-left: 1px solid var(--term-border);
+  color: var(--term-muted);
+  background: var(--term-panel-2);
 }
 
 .desktop-bar span::before,
@@ -700,13 +734,14 @@ input:-webkit-autofill:focus {
 }
 
 .desktop-bar button {
-  color: #c7cbc8;
+  color: var(--term-ink);
+  text-transform: none;
 }
 
 .desktop-bar button:hover,
 .desktop-bar button:focus-visible {
-  background: #c7cbc8;
-  color: #080909;
+  background: var(--ansi-cyan);
+  color: var(--term-inverse);
   outline: 0;
 }
 
@@ -714,28 +749,29 @@ input:-webkit-autofill:focus {
 .desktop-bar button:focus-visible::before,
 .desktop-bar button:hover::after,
 .desktop-bar button:focus-visible::after {
-  color: #080909;
+  color: var(--term-inverse);
 }
 
 .start-button,
 .taskbar-item {
-  min-height: 20px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
-  padding: 1px 9px;
-  border: 1px solid #3f4542;
-  background: #080909;
-  color: #c7cbc8;
+  padding: 0 9px;
+  border: 1px solid var(--term-border);
+  background: var(--term-bg);
+  color: var(--term-ink);
   box-shadow: inset 0 0 0 1px #000;
 }
 
 .start-button {
   font-weight: 400;
+  color: var(--term-ink-strong);
 }
 
 .taskbar-item {
-  min-width: 160px;
-  max-width: 260px;
+  min-width: 128px;
+  max-width: 240px;
   justify-content: flex-start;
   font-weight: 400;
   overflow: hidden;
@@ -743,10 +779,34 @@ input:-webkit-autofill:focus {
   white-space: nowrap;
 }
 
+.desktop-bar .taskbar-item::before {
+  content: " ";
+  width: 1ch;
+  display: inline-block;
+}
+
 .taskbar-item.active {
-  background: #c7cbc8;
-  color: #080909;
-  box-shadow: inset 0 0 0 1px #080909;
+  border-color: var(--ansi-cyan);
+  background: var(--ansi-cyan);
+  color: var(--term-inverse);
+  box-shadow: inset 0 0 0 1px var(--term-inverse);
+}
+
+.desktop-bar .taskbar-item.active::before {
+  content: ">";
+  width: 1ch;
+  display: inline-block;
+}
+
+.taskbar-item.minimized {
+  color: var(--term-muted);
+  border-color: #2d3330;
+}
+
+.desktop-bar .taskbar-item.minimized::before {
+  content: "-";
+  width: 1ch;
+  display: inline-block;
 }
 
 .iframe-stage {
@@ -776,6 +836,11 @@ input:-webkit-autofill:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--term-muted);
+}
+
+.desktop-status + .desktop-status {
+  padding-left: 1ch;
+  border-left: 1px solid var(--term-border);
 }
 
 .app {

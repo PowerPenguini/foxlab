@@ -224,6 +224,8 @@ function App() {
 
   const minimizedWindows = windows.filter((item) => item.minimized);
   const visibleWindows = windows.filter((item) => !item.minimized);
+  const activeWindow = windows.find((item) => item.id === activeWindowId);
+  const barStatus = message || (activeWindow ? taskbarLabel(activeWindow.appMeta) : windows.length > 0 ? `${windows.length} windows` : 'ready');
 
   return (
     <div className="desktop">
@@ -285,17 +287,23 @@ function App() {
         );
       })}
 
-      <footer className="desktop-bar">
-        <span className="start-button">$ foxlab</span>
-        {windows.map((item) => (
-          item.minimized ? (
-            <button key={item.id} className="taskbar-item" onClick={() => restoreWindow(item.id)}>{taskbarLabel(item.appMeta)}</button>
-          ) : (
-            <button key={item.id} className={`taskbar-item ${item.id === activeWindowId ? 'active' : ''}`} onClick={() => bringWindowToFront(item.id)}>{taskbarLabel(item.appMeta)}</button>
-          )
-        ))}
-        {visibleWindows.length === 0 && minimizedWindows.length > 0 && <span className="desktop-status">all windows minimized</span>}
-        {message && <span className={`desktop-status ${appState === 'error' ? 'message-error' : ''}`}>{message}</span>}
+      <footer className="desktop-bar" aria-label="window bar">
+        <div className="desktop-bar-brand">
+          <span className="start-button">foxlab</span>
+        </div>
+        <div className="taskbar-list" aria-label="open windows">
+          {windows.map((item) => (
+            item.minimized ? (
+              <button key={item.id} className="taskbar-item minimized" onClick={() => restoreWindow(item.id)}>{taskbarLabel(item.appMeta)}</button>
+            ) : (
+              <button key={item.id} className={`taskbar-item ${item.id === activeWindowId ? 'active' : ''}`} aria-current={item.id === activeWindowId ? 'true' : undefined} onClick={() => bringWindowToFront(item.id)}>{taskbarLabel(item.appMeta)}</button>
+            )
+          ))}
+        </div>
+        <div className="desktop-bar-status">
+          {visibleWindows.length === 0 && minimizedWindows.length > 0 && <span className="desktop-status">all windows minimized</span>}
+          <span className={`desktop-status ${appState === 'error' ? 'message-error' : ''}`}>{barStatus}</span>
+        </div>
       </footer>
     </div>
   );
