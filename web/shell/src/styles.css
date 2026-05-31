@@ -336,6 +336,41 @@ input:-webkit-autofill:focus {
   background: #aeb5b0;
 }
 
+.desktop-icon-folder .folder-tab,
+.desktop-icon-folder .folder-body,
+.desktop-icon-folder .folder-line {
+  position: absolute;
+  display: block;
+}
+
+.desktop-icon-folder .folder-tab {
+  left: 5px;
+  top: 7px;
+  width: 15px;
+  height: 6px;
+  border: 1px solid #aeb5b0;
+  border-bottom: 0;
+  background: #080909;
+}
+
+.desktop-icon-folder .folder-body {
+  left: 3px;
+  top: 12px;
+  width: 34px;
+  height: 20px;
+  border: 1px solid #aeb5b0;
+  background: #080909;
+  box-shadow: inset 0 0 0 1px #000;
+}
+
+.desktop-icon-folder .folder-line {
+  left: 8px;
+  top: 23px;
+  width: 24px;
+  height: 1px;
+  background: #777d79;
+}
+
 .desktop-icon-edge,
 .desktop-icon-node {
   position: absolute;

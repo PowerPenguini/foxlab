@@ -400,6 +400,15 @@ function AppIcon({ icon }) {
       </span>
     );
   }
+  if (icon?.type === 'builtin' && icon?.value === 'folder') {
+    return (
+      <span className="desktop-icon-art desktop-icon-folder" aria-hidden="true">
+        <span className="folder-tab" />
+        <span className="folder-body" />
+        <span className="folder-line" />
+      </span>
+    );
+  }
   return <span className="desktop-icon-art desktop-icon-glyph" aria-hidden="true">{(icon?.value || '?').slice(0, 2)}</span>;
 }
 
