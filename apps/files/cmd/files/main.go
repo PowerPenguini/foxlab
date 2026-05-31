@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	libvirt "github.com/libvirt/libvirt-go"
 
 	"foxlab/internal/wm"
 )
@@ -115,6 +118,7 @@ type mountSession struct {
 	Image     string    `json:"image"`
 	Path      string    `json:"path"`
 	NBD       string    `json:"nbd"`
+	Backend   string    `json:"backend"`
 	MountedAt time.Time `json:"mountedAt"`
 	LastUsed  time.Time `json:"lastUsed"`
 	ReadOnly  bool      `json:"readOnly"`
@@ -197,6 +201,7 @@ type layerInfo struct {
 type imageInfoResponse struct {
 	Info   qemuInfo    `json:"info"`
 	Layers []layerInfo `json:"layers"`
+	Source string      `json:"source"`
 }
 
 type helperRequest struct {
@@ -209,6 +214,7 @@ type helperRequest struct {
 type helperResponse struct {
 	MountPoint string `json:"mountPoint,omitempty"`
 	NBD        string `json:"nbd,omitempty"`
+	Backend    string `json:"backend,omitempty"`
 }
 
 func newFilesApp(workspace, libvirt string) *filesApp {
@@ -461,13 +467,12 @@ func (a *filesApp) imageInfo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	info, err := qemuImgInfo(r.Context(), path)
+	info, layers, source, err := a.imageMetadata(r.Context(), path)
 	if err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	layers, _ := backingChain(r.Context(), path)
-	writeJSON(w, imageInfoResponse{Info: info, Layers: layers})
+	writeJSON(w, imageInfoResponse{Info: info, Layers: layers, Source: source})
 }
 
 func (a *filesApp) imageLayers(w http.ResponseWriter, r *http.Request) {
@@ -480,7 +485,7 @@ func (a *filesApp) imageLayers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	layers, err := backingChain(r.Context(), path)
+	layers, err := a.imageLayersForPath(r.Context(), path)
 	if err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
@@ -522,11 +527,7 @@ func (a *filesApp) mountImage(w http.ResponseWriter, r *http.Request) {
 
 	id := mountID(image)
 	mountPoint := filepath.Join(runtimeMountRoot(), id)
-	res, err := a.runPrivilegedHelper(r.Context(), helperRequest{
-		Action:     "mount",
-		Image:      image,
-		MountPoint: mountPoint,
-	})
+	res, err := a.mountReadOnly(r.Context(), image, mountPoint)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -537,6 +538,7 @@ func (a *filesApp) mountImage(w http.ResponseWriter, r *http.Request) {
 		Image:     image,
 		Path:      res.MountPoint,
 		NBD:       res.NBD,
+		Backend:   mountBackend(res),
 		MountedAt: now,
 		LastUsed:  now,
 		ReadOnly:  true,
@@ -598,6 +600,110 @@ func (a *filesApp) layerDiff(w http.ResponseWriter, r *http.Request) {
 
 func (a *filesApp) staticFile(w http.ResponseWriter, r *http.Request) {
 	serveStaticDir(w, r, a.static)
+}
+
+func (a *filesApp) imageMetadata(ctx context.Context, path string) (qemuInfo, []layerInfo, string, error) {
+	if info, layers, err := a.libvirtImageMetadata(path); err == nil {
+		return info, layers, "libvirt", nil
+	}
+	info, err := qemuImgInfo(ctx, path)
+	if err != nil {
+		return qemuInfo{}, nil, "", err
+	}
+	layers, _ := backingChain(ctx, path)
+	return info, layers, "qemu-img", nil
+}
+
+func (a *filesApp) imageLayersForPath(ctx context.Context, path string) ([]layerInfo, error) {
+	if _, layers, err := a.libvirtImageMetadata(path); err == nil {
+		return layers, nil
+	}
+	return backingChain(ctx, path)
+}
+
+func (a *filesApp) libvirtImageMetadata(path string) (qemuInfo, []layerInfo, error) {
+	conn, err := libvirt.NewConnect(a.libvirt)
+	if err != nil {
+		return qemuInfo{}, nil, err
+	}
+	defer conn.Close()
+	vol, err := conn.LookupStorageVolByPath(path)
+	if err != nil {
+		return qemuInfo{}, nil, err
+	}
+	defer vol.Free()
+	xmlText, err := vol.GetXMLDesc(0)
+	if err != nil {
+		return qemuInfo{}, nil, err
+	}
+	return libvirtVolumeMetadata(path, xmlText)
+}
+
+func (a *filesApp) mountReadOnly(ctx context.Context, image, mountPoint string) (helperResponse, error) {
+	if _, err := exec.LookPath("guestmount"); err == nil {
+		if err := guestMount(ctx, image, mountPoint); err == nil {
+			return helperResponse{MountPoint: mountPoint, Backend: "guestmount"}, nil
+		}
+	}
+	res, err := a.runPrivilegedHelper(ctx, helperRequest{
+		Action:     "mount",
+		Image:      image,
+		MountPoint: mountPoint,
+	})
+	if res.Backend == "" {
+		res.Backend = "qemu-nbd"
+	}
+	return res, err
+}
+
+func mountBackend(res helperResponse) string {
+	if res.Backend != "" {
+		return res.Backend
+	}
+	if res.NBD != "" {
+		return "qemu-nbd"
+	}
+	return "unknown"
+}
+
+func guestMount(ctx context.Context, image, mountPoint string) error {
+	if err := os.MkdirAll(mountPoint, 0o755); err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "guestmount", "-a", image, "-i", "--ro", mountPoint)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		_ = os.Remove(mountPoint)
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+func guestUnmount(ctx context.Context, mountPoint string) error {
+	mountPoint, err := cleanAnyPath(mountPoint)
+	if err != nil {
+		return err
+	}
+	if !insideRuntimeMountRoot(mountPoint) {
+		return fmt.Errorf("mount point is outside foxlab runtime root")
+	}
+	for _, name := range []string{"fusermount3", "fusermount"} {
+		if _, err := exec.LookPath(name); err != nil {
+			continue
+		}
+		out, err := exec.CommandContext(ctx, name, "-u", mountPoint).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+		}
+		_ = os.Remove(mountPoint)
+		return nil
+	}
+	out, err := exec.CommandContext(ctx, "umount", mountPoint).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	_ = os.Remove(mountPoint)
+	return nil
 }
 
 func (a *filesApp) runPrivilegedHelper(ctx context.Context, req helperRequest) (helperResponse, error) {
@@ -674,6 +780,9 @@ func (a *filesApp) unmountByID(ctx context.Context, id string) error {
 	a.mu.Unlock()
 	if session == nil {
 		return fmt.Errorf("mount %q not found", id)
+	}
+	if session.Backend == "guestmount" {
+		return guestUnmount(ctx, session.Path)
 	}
 	_, err := a.runPrivilegedHelper(ctx, helperRequest{
 		Action:     "unmount",
@@ -897,7 +1006,132 @@ func backingChain(ctx context.Context, path string) ([]layerInfo, error) {
 	return out, nil
 }
 
+type volumeXML struct {
+	Name         string          `xml:"name"`
+	Capacity     numericXML      `xml:"capacity"`
+	Allocation   numericXML      `xml:"allocation"`
+	Target       volumeTargetXML `xml:"target"`
+	BackingStore backingStoreXML `xml:"backingStore"`
+}
+
+type volumeTargetXML struct {
+	Path   string    `xml:"path"`
+	Format formatXML `xml:"format"`
+}
+
+type backingStoreXML struct {
+	Path   string    `xml:"path"`
+	Format formatXML `xml:"format"`
+}
+
+type numericXML struct {
+	Value int64 `xml:",chardata"`
+}
+
+type formatXML struct {
+	Type string `xml:"type,attr"`
+}
+
+func libvirtVolumeMetadata(requestedPath, xmlText string) (qemuInfo, []layerInfo, error) {
+	var vol volumeXML
+	if err := xml.Unmarshal([]byte(xmlText), &vol); err != nil {
+		return qemuInfo{}, nil, err
+	}
+	path := vol.Target.Path
+	if path == "" {
+		path = requestedPath
+	}
+	format := vol.Target.Format.Type
+	info := qemuInfo{
+		Filename:            path,
+		Format:              format,
+		VirtualSize:         vol.Capacity.Value,
+		ActualSize:          vol.Allocation.Value,
+		BackingFilename:     vol.BackingStore.Path,
+		FullBackingFilename: vol.BackingStore.Path,
+	}
+	layers := []layerInfo{{
+		Path:        path,
+		Format:      format,
+		VirtualSize: vol.Capacity.Value,
+		ActualSize:  vol.Allocation.Value,
+		Backing:     vol.BackingStore.Path,
+	}}
+	if vol.BackingStore.Path != "" {
+		layers = append(layers, layerInfo{
+			Path:    vol.BackingStore.Path,
+			Format:  vol.BackingStore.Format.Type,
+			Backing: "",
+		})
+	}
+	return info, layers, nil
+}
+
 func runningDomainDiskPaths(ctx context.Context, uri string) ([]string, error) {
+	if paths, err := runningDomainDiskPathsLibvirt(uri); err == nil {
+		return paths, nil
+	}
+	return runningDomainDiskPathsVirsh(ctx, uri)
+}
+
+type domainXML struct {
+	Devices struct {
+		Disks []domainDiskXML `xml:"disk"`
+	} `xml:"devices"`
+}
+
+type domainDiskXML struct {
+	Device string `xml:"device,attr"`
+	Source struct {
+		File string `xml:"file,attr"`
+		Dev  string `xml:"dev,attr"`
+	} `xml:"source"`
+}
+
+func runningDomainDiskPathsLibvirt(uri string) ([]string, error) {
+	conn, err := libvirt.NewConnect(uri)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	domains, err := conn.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_RUNNING)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for i := range domains {
+		xmlText, err := domains[i].GetXMLDesc(0)
+		_ = domains[i].Free()
+		if err != nil {
+			continue
+		}
+		paths = append(paths, parseDomainDiskPaths(xmlText)...)
+	}
+	return paths, nil
+}
+
+func parseDomainDiskPaths(xmlText string) []string {
+	var parsed domainXML
+	if err := xml.Unmarshal([]byte(xmlText), &parsed); err != nil {
+		return nil
+	}
+	var paths []string
+	for _, disk := range parsed.Devices.Disks {
+		if disk.Device != "" && disk.Device != "disk" {
+			continue
+		}
+		path := disk.Source.File
+		if path == "" {
+			path = disk.Source.Dev
+		}
+		if filepath.IsAbs(path) {
+			paths = append(paths, filepath.Clean(path))
+		}
+	}
+	return paths
+}
+
+func runningDomainDiskPathsVirsh(ctx context.Context, uri string) ([]string, error) {
 	if _, err := exec.LookPath("virsh"); err != nil {
 		return nil, err
 	}
@@ -996,7 +1230,7 @@ func helperMount(req helperRequest) (helperResponse, error) {
 		_ = exec.Command("qemu-nbd", "--disconnect", nbd).Run()
 		return helperResponse{}, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
 	}
-	return helperResponse{MountPoint: mountPoint, NBD: nbd}, nil
+	return helperResponse{MountPoint: mountPoint, NBD: nbd, Backend: "qemu-nbd"}, nil
 }
 
 func helperUnmount(req helperRequest) (helperResponse, error) {

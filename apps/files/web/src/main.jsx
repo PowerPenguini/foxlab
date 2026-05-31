@@ -249,6 +249,7 @@ function App() {
         {imageInfo?.layers && (
           <section className="detail-block">
             <h2>layers</h2>
+            {imageInfo.source && <p className="meta-line">source {imageInfo.source}</p>}
             {imageInfo.layers.map((layer, index) => (
               <div className="layer" key={layer.path}>
                 <strong>{index === 0 ? 'top' : `base ${index}`}</strong>
@@ -272,7 +273,10 @@ function App() {
             <h2>mounts</h2>
             {listing.mounts.map((mount) => (
               <div className="mount" key={mount.id}>
-                <span>{baseName(mount.image)}</span>
+                <span>
+                  {baseName(mount.image)}
+                  {mount.backend && <small>{mount.backend}</small>}
+                </span>
                 <button onClick={() => unmountImage(mount.id)}>unmount</button>
               </div>
             ))}

@@ -105,6 +105,15 @@ func TestMountListCopiesSessions(t *testing.T) {
 	}
 }
 
+func TestMountBackend(t *testing.T) {
+	if got := mountBackend(helperResponse{Backend: "guestmount"}); got != "guestmount" {
+		t.Fatalf("mountBackend = %q", got)
+	}
+	if got := mountBackend(helperResponse{NBD: "/dev/nbd0"}); got != "qemu-nbd" {
+		t.Fatalf("mountBackend fallback = %q", got)
+	}
+}
+
 func TestInsideRuntimeMountRootAcceptsTmpFallback(t *testing.T) {
 	path := filepath.Join(os.TempDir(), "foxlab", "files", "mounts", "abc")
 	if !insideRuntimeMountRoot(path) {
@@ -112,6 +121,59 @@ func TestInsideRuntimeMountRootAcceptsTmpFallback(t *testing.T) {
 	}
 	if insideRuntimeMountRoot(filepath.Join(os.TempDir(), "foxlab", "files", "other")) {
 		t.Fatalf("unexpected path accepted")
+	}
+}
+
+func TestLibvirtVolumeMetadataParsesBackingStore(t *testing.T) {
+	info, layers, err := libvirtVolumeMetadata("/images/overlay.qcow2", `<volume>
+  <name>overlay.qcow2</name>
+  <capacity unit="bytes">1073741824</capacity>
+  <allocation unit="bytes">196616</allocation>
+  <target>
+    <path>/images/overlay.qcow2</path>
+    <format type="qcow2"></format>
+  </target>
+  <backingStore>
+    <path>/images/base.qcow2</path>
+    <format type="qcow2"></format>
+  </backingStore>
+</volume>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Filename != "/images/overlay.qcow2" || info.Format != "qcow2" {
+		t.Fatalf("unexpected info: %#v", info)
+	}
+	if info.VirtualSize != 1073741824 || info.ActualSize != 196616 {
+		t.Fatalf("unexpected size info: %#v", info)
+	}
+	if info.FullBackingFilename != "/images/base.qcow2" {
+		t.Fatalf("unexpected backing file: %#v", info)
+	}
+	if len(layers) != 2 || layers[0].Path != "/images/overlay.qcow2" || layers[1].Path != "/images/base.qcow2" {
+		t.Fatalf("unexpected layers: %#v", layers)
+	}
+}
+
+func TestParseDomainDiskPaths(t *testing.T) {
+	paths := parseDomainDiskPaths(`<domain type="kvm">
+  <devices>
+    <disk type="file" device="disk">
+      <source file="/var/lib/libvirt/images/vm.qcow2"></source>
+    </disk>
+    <disk type="block" device="disk">
+      <source dev="/dev/vg0/vm-root"></source>
+    </disk>
+    <disk type="file" device="cdrom">
+      <source file="/isos/alpine.iso"></source>
+    </disk>
+  </devices>
+</domain>`)
+	if len(paths) != 2 {
+		t.Fatalf("unexpected paths: %#v", paths)
+	}
+	if paths[0] != "/var/lib/libvirt/images/vm.qcow2" || paths[1] != "/dev/vg0/vm-root" {
+		t.Fatalf("unexpected paths: %#v", paths)
 	}
 }
 

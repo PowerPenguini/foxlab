@@ -211,7 +211,8 @@ h2 {
 }
 
 .empty,
-.error {
+.error,
+.meta-line {
   margin: 0;
   padding: 10px;
   color: #8f9792;
@@ -234,7 +235,12 @@ h2 {
   align-items: center;
 }
 
-.layer small {
+.mount small {
+  display: block;
+}
+
+.layer small,
+.mount small {
   color: #8f9792;
 }
 
