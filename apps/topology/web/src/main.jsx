@@ -13,7 +13,9 @@ const blankLab = {
 };
 const gridSize = 16;
 const nodeWidth = 192;
-const nodeHeight = 48;
+const nodeHeight = 52;
+const routeGap = 32;
+const routeLaneGap = 16;
 
 function App() {
   const [labs, setLabs] = useState([]);
@@ -435,7 +437,13 @@ function Topology({ lab, status, selected, setSelected, moveNode, connectNodes }
   const vms = lab.vms || [];
   const switches = lab.switches || [];
   const externalLinks = lab.externalLinks || [];
-  const lines = [];
+  const nodeEntries = [
+    ...vms.map((vm) => ({ endpoint: { type: 'vm', id: vm.id }, point: nodes[vm.id] || { x: 80, y: 80 } })),
+    ...switches.map((sw) => ({ endpoint: { type: 'switch', id: sw.id }, point: nodes[sw.id] || defaultPoint('switch') })),
+    ...externalLinks.map((link) => ({ endpoint: { type: 'external', id: link.id }, point: nodes[link.id] || defaultPoint('external') })),
+  ];
+  const obstacles = nodeEntries.map((entry) => ({ ...nodeRect(entry.point), key: endpointKey(entry.endpoint) }));
+  const edges = [];
   for (const vm of vms) {
     for (const nic of vm.networks || []) {
       const target = nic.switch
@@ -444,20 +452,17 @@ function Topology({ lab, status, selected, setSelected, moveNode, connectNodes }
           ? { type: 'external', id: nic.externalLink }
           : null;
       if (!target) continue;
-      const a = nodes[vm.id] || { x: 80, y: 80 };
-      const b = nodes[target.id] || defaultPoint(target.type);
-      lines.push({ key: `${vm.id}-${target.type}-${target.id}`, d: orthogonalPath(a, b) });
+      edges.push({ key: `${vm.id}-${target.type}-${target.id}`, from: { type: 'vm', id: vm.id }, to: target });
     }
   }
   for (const sw of switches) {
     if (!sw.externalLink) continue;
-    const a = nodes[sw.id] || defaultPoint('switch');
-    const b = nodes[sw.externalLink] || defaultPoint('external');
-    lines.push({ key: `${sw.id}-external-${sw.externalLink}`, d: orthogonalPath(a, b) });
+    edges.push({ key: `${sw.id}-external-${sw.externalLink}`, from: { type: 'switch', id: sw.id }, to: { type: 'external', id: sw.externalLink } });
   }
+  const lines = routeEdges(edges, nodes, obstacles);
   if (connecting) {
     const from = nodes[connecting.from.id] || defaultPoint(connecting.from.type);
-    lines.push({ key: 'draft-link', d: orthogonalPathToPoint(from, connecting.cursor), draft: true });
+    lines.push({ key: 'draft-link', d: routePathToPoint(connecting.from, from, connecting.cursor, obstacles), draft: true });
   }
 
   function canvasPoint(event) {
@@ -992,39 +997,286 @@ function nodeKind(type) {
   return 'SW';
 }
 
-function orthogonalPathToPoint(a, point) {
-  const ac = { x: a.x + nodeWidth / 2, y: a.y + nodeHeight / 2 };
-  const dx = point.x - ac.x;
-  const dy = point.y - ac.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    const start = { x: dx >= 0 ? a.x + nodeWidth : a.x, y: ac.y };
-    const midX = Math.round((start.x + point.x) / 2);
-    return `M ${start.x} ${start.y} H ${midX} V ${point.y} H ${point.x}`;
-  }
-
-  const start = { x: ac.x, y: dy >= 0 ? a.y + nodeHeight : a.y };
-  const midY = Math.round((start.y + point.y) / 2);
-  return `M ${start.x} ${start.y} V ${midY} H ${point.x} V ${point.y}`;
+function routeEdges(edges, nodes, obstacles) {
+  const plans = edges.map((edge) => {
+    const fromPoint = nodePoint(edge.from, nodes) || defaultPoint(edge.from.type);
+    const toPoint = nodePoint(edge.to, nodes) || defaultPoint(edge.to.type);
+    const fromRect = nodeRect(fromPoint);
+    const toRect = nodeRect(toPoint);
+    const fromSide = sideToward(fromRect, toRect);
+    const toSide = sideToward(toRect, fromRect);
+    return { ...edge, fromPoint, toPoint, fromRect, toRect, fromSide, toSide };
+  });
+  const offsets = portOffsets(plans);
+  const usedSegments = [];
+  return plans.map((plan) => {
+    const route = routeBetweenNodes(plan, obstacles, usedSegments, offsets);
+    usedSegments.push(...route.segments);
+    return { key: plan.key, d: route.d };
+  });
 }
 
-function orthogonalPath(a, b) {
-  const ac = { x: a.x + nodeWidth / 2, y: a.y + nodeHeight / 2 };
-  const bc = { x: b.x + nodeWidth / 2, y: b.y + nodeHeight / 2 };
-  const dx = bc.x - ac.x;
-  const dy = bc.y - ac.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    const start = { x: dx >= 0 ? a.x + nodeWidth : a.x, y: ac.y };
-    const end = { x: dx >= 0 ? b.x : b.x + nodeWidth, y: bc.y };
-    const midX = Math.round((start.x + end.x) / 2);
-    return `M ${start.x} ${start.y} H ${midX} V ${end.y} H ${end.x}`;
+function portOffsets(plans) {
+  const groups = new Map();
+  for (const plan of plans) {
+    addPortPlan(groups, plan, 'from');
+    addPortPlan(groups, plan, 'to');
   }
+  const offsets = new Map();
+  for (const [, items] of groups) {
+    items.sort((a, b) => a.sort - b.sort || a.edge.key.localeCompare(b.edge.key));
+    for (let i = 0; i < items.length; i++) {
+      offsets.set(`${items[i].edge.key}:${items[i].end}`, (i - (items.length - 1) / 2) * routeLaneGap);
+    }
+  }
+  return offsets;
+}
 
-  const start = { x: ac.x, y: dy >= 0 ? a.y + nodeHeight : a.y };
-  const end = { x: bc.x, y: dy >= 0 ? b.y : b.y + nodeHeight };
-  const midY = Math.round((start.y + end.y) / 2);
-  return `M ${start.x} ${start.y} V ${midY} H ${end.x} V ${end.y}`;
+function addPortPlan(groups, edge, end) {
+  const endpoint = edge[end];
+  const side = edge[`${end}Side`];
+  const otherRect = edge[end === 'from' ? 'toRect' : 'fromRect'];
+  const key = `${endpointKey(endpoint)}:${side}`;
+  const sort = side === 'left' || side === 'right' ? otherRect.cy : otherRect.cx;
+  if (!groups.has(key)) groups.set(key, []);
+  groups.get(key).push({ edge, end, sort });
+}
+
+function routeBetweenNodes(plan, obstacles, usedSegments, offsets) {
+  const fromOffset = offsets.get(`${plan.key}:from`) || 0;
+  const toOffset = offsets.get(`${plan.key}:to`) || 0;
+  const start = portPoint(plan.fromRect, plan.fromSide, fromOffset);
+  const end = portPoint(plan.toRect, plan.toSide, toOffset);
+  const startExit = moveOut(start, plan.fromSide, routeGap);
+  const endExit = moveOut(end, plan.toSide, routeGap);
+  const candidates = candidateRoutes(start, startExit, endExit, end, plan.fromRect, plan.toRect);
+  return bestRoute(candidates, obstacles, usedSegments, [endpointKey(plan.from), endpointKey(plan.to)]);
+}
+
+function routePathToPoint(from, fromPoint, point, obstacles) {
+  const fromRect = nodeRect(fromPoint);
+  const pointRect = { left: point.x, right: point.x, top: point.y, bottom: point.y, cx: point.x, cy: point.y };
+  const side = sideToward(fromRect, pointRect);
+  const start = portPoint(fromRect, side, 0);
+  const startExit = moveOut(start, side, routeGap);
+  const candidates = [
+    compactRoute([start, startExit, { x: point.x, y: startExit.y }, point]),
+    compactRoute([start, startExit, { x: startExit.x, y: point.y }, point]),
+  ];
+  return bestRoute(candidates, obstacles, [], [endpointKey(from)]).d;
+}
+
+function candidateRoutes(start, startExit, endExit, end, fromRect, toRect) {
+  const midX = snapValue((startExit.x + endExit.x) / 2);
+  const midY = snapValue((startExit.y + endExit.y) / 2);
+  const leftLane = snapValue(Math.min(fromRect.left, toRect.left) - routeGap);
+  const rightLane = snapValue(Math.max(fromRect.right, toRect.right) + routeGap);
+  const topLane = snapValue(Math.min(fromRect.top, toRect.top) - routeGap);
+  const bottomLane = snapValue(Math.max(fromRect.bottom, toRect.bottom) + routeGap);
+
+  return [
+    compactRoute([start, startExit, { x: midX, y: startExit.y }, { x: midX, y: endExit.y }, endExit, end]),
+    compactRoute([start, startExit, { x: startExit.x, y: midY }, { x: endExit.x, y: midY }, endExit, end]),
+    compactRoute([start, startExit, { x: endExit.x, y: startExit.y }, endExit, end]),
+    compactRoute([start, startExit, { x: startExit.x, y: endExit.y }, endExit, end]),
+    compactRoute([start, startExit, { x: startExit.x, y: topLane }, { x: endExit.x, y: topLane }, endExit, end]),
+    compactRoute([start, startExit, { x: startExit.x, y: bottomLane }, { x: endExit.x, y: bottomLane }, endExit, end]),
+    compactRoute([start, startExit, { x: leftLane, y: startExit.y }, { x: leftLane, y: endExit.y }, endExit, end]),
+    compactRoute([start, startExit, { x: rightLane, y: startExit.y }, { x: rightLane, y: endExit.y }, endExit, end]),
+  ];
+}
+
+function bestRoute(candidates, obstacles, usedSegments, endpointKeys) {
+  let best = null;
+  for (const points of candidates) {
+    const segments = pathSegments(points);
+    const score = routeScore(points, segments, obstacles, usedSegments, endpointKeys);
+    if (!best || score < best.score) {
+      best = { d: pointsToPath(points), segments, score };
+    }
+  }
+  return best || { d: '', segments: [] };
+}
+
+function routeScore(points, segments, obstacles, usedSegments, endpointKeys) {
+  const endpointSet = new Set(endpointKeys);
+  let score = pathLength(segments) + bendCount(points) * 12;
+  for (const segment of segments) {
+    for (const obstacle of obstacles) {
+      if (endpointSet.has(obstacle.key)) continue;
+      if (segmentIntersectsRect(segment, expandRect(obstacle, 8))) score += 10000;
+      else if (segmentIntersectsRect(segment, expandRect(obstacle, 20))) score += 400;
+    }
+    for (const used of usedSegments) {
+      if (segmentsOverlap(segment, used)) score += 300 + overlapLength(segment, used);
+      else if (segmentsCross(segment, used)) score += 80;
+    }
+  }
+  return score;
+}
+
+function nodeRect(point) {
+  return {
+    left: point.x,
+    right: point.x + nodeWidth,
+    top: point.y,
+    bottom: point.y + nodeHeight,
+    cx: point.x + nodeWidth / 2,
+    cy: point.y + nodeHeight / 2,
+  };
+}
+
+function expandRect(rect, padding) {
+  return {
+    left: rect.left - padding,
+    right: rect.right + padding,
+    top: rect.top - padding,
+    bottom: rect.bottom + padding,
+  };
+}
+
+function sideToward(a, b) {
+  const dx = b.cx - a.cx;
+  const dy = b.cy - a.cy;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+function portPoint(rect, side, offset) {
+  if (side === 'left') return { x: rect.left, y: snapValue(rect.cy + offset) };
+  if (side === 'right') return { x: rect.right, y: snapValue(rect.cy + offset) };
+  if (side === 'top') return { x: snapValue(rect.cx + offset), y: rect.top };
+  return { x: snapValue(rect.cx + offset), y: rect.bottom };
+}
+
+function moveOut(point, side, distance) {
+  if (side === 'left') return { x: point.x - distance, y: point.y };
+  if (side === 'right') return { x: point.x + distance, y: point.y };
+  if (side === 'top') return { x: point.x, y: point.y - distance };
+  return { x: point.x, y: point.y + distance };
+}
+
+function compactRoute(points) {
+  const deduped = [];
+  for (const point of points) {
+    const next = { x: snapValue(point.x), y: snapValue(point.y) };
+    const last = deduped[deduped.length - 1];
+    if (!last || last.x !== next.x || last.y !== next.y) deduped.push(next);
+  }
+  const compacted = [];
+  for (const point of deduped) {
+    compacted.push(point);
+    while (compacted.length >= 3) {
+      const a = compacted[compacted.length - 3];
+      const b = compacted[compacted.length - 2];
+      const c = compacted[compacted.length - 1];
+      if ((a.x === b.x && b.x === c.x) || (a.y === b.y && b.y === c.y)) {
+        compacted.splice(compacted.length - 2, 1);
+      } else {
+        break;
+      }
+    }
+  }
+  return compacted;
+}
+
+function pathSegments(points) {
+  const segments = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (a.x === b.x && a.y === b.y) continue;
+    segments.push({
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      vertical: a.x === b.x,
+      horizontal: a.y === b.y,
+    });
+  }
+  return segments;
+}
+
+function pointsToPath(points) {
+  if (points.length === 0) return '';
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const point = points[i];
+    if (point.x === prev.x) d += ` V ${point.y}`;
+    else if (point.y === prev.y) d += ` H ${point.x}`;
+    else d += ` L ${point.x} ${point.y}`;
+  }
+  return d;
+}
+
+function pathLength(segments) {
+  return segments.reduce((sum, segment) => sum + Math.abs(segment.x2 - segment.x1) + Math.abs(segment.y2 - segment.y1), 0);
+}
+
+function bendCount(points) {
+  let bends = 0;
+  for (let i = 2; i < points.length; i++) {
+    const a = points[i - 2];
+    const b = points[i - 1];
+    const c = points[i];
+    if ((a.x === b.x) !== (b.x === c.x)) bends++;
+  }
+  return bends;
+}
+
+function segmentIntersectsRect(segment, rect) {
+  if (segment.horizontal) {
+    const minX = Math.min(segment.x1, segment.x2);
+    const maxX = Math.max(segment.x1, segment.x2);
+    return segment.y1 >= rect.top && segment.y1 <= rect.bottom && maxX >= rect.left && minX <= rect.right;
+  }
+  if (segment.vertical) {
+    const minY = Math.min(segment.y1, segment.y2);
+    const maxY = Math.max(segment.y1, segment.y2);
+    return segment.x1 >= rect.left && segment.x1 <= rect.right && maxY >= rect.top && minY <= rect.bottom;
+  }
+  return false;
+}
+
+function segmentsOverlap(a, b) {
+  if (a.horizontal && b.horizontal && a.y1 === b.y1) {
+    return rangeOverlap(a.x1, a.x2, b.x1, b.x2) > 0;
+  }
+  if (a.vertical && b.vertical && a.x1 === b.x1) {
+    return rangeOverlap(a.y1, a.y2, b.y1, b.y2) > 0;
+  }
+  return false;
+}
+
+function overlapLength(a, b) {
+  if (a.horizontal && b.horizontal) return rangeOverlap(a.x1, a.x2, b.x1, b.x2);
+  if (a.vertical && b.vertical) return rangeOverlap(a.y1, a.y2, b.y1, b.y2);
+  return 0;
+}
+
+function segmentsCross(a, b) {
+  const h = a.horizontal ? a : b.horizontal ? b : null;
+  const v = a.vertical ? a : b.vertical ? b : null;
+  if (!h || !v) return false;
+  return between(v.x1, h.x1, h.x2) && between(h.y1, v.y1, v.y2);
+}
+
+function rangeOverlap(a1, a2, b1, b2) {
+  const aMin = Math.min(a1, a2);
+  const aMax = Math.max(a1, a2);
+  const bMin = Math.min(b1, b2);
+  const bMax = Math.max(b1, b2);
+  return Math.max(0, Math.min(aMax, bMax) - Math.max(aMin, bMin));
+}
+
+function between(value, a, b) {
+  return value >= Math.min(a, b) && value <= Math.max(a, b);
+}
+
+function snapValue(value) {
+  return Math.round(value / gridSize) * gridSize;
 }
 
 function uniqueId(prefix, existing) {
