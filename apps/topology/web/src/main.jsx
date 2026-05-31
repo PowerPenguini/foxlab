@@ -1024,12 +1024,25 @@ function portOffset(index, count) {
 function routeBetweenNodes(plan, obstacles, usedSegments, offsets) {
   const fromOffset = offsets.get(`${plan.key}:from`) || 0;
   const toOffset = offsets.get(`${plan.key}:to`) || 0;
-  const start = portPoint(plan.fromRect, plan.fromSide, fromOffset);
-  const end = portPoint(plan.toRect, plan.toSide, toOffset);
-  const startExit = moveOut(start, plan.fromSide, routeGap);
-  const endExit = moveOut(end, plan.toSide, routeGap);
-  const candidates = candidateRoutes(start, startExit, endExit, end, plan.fromRect, plan.toRect, usedSegments);
+  const candidates = [];
+  for (const fromSide of routeSideChoices(plan.fromSide)) {
+    for (const toSide of routeSideChoices(plan.toSide)) {
+      const start = portPoint(plan.fromRect, fromSide, fromSide === plan.fromSide ? fromOffset : 0);
+      const end = portPoint(plan.toRect, toSide, toSide === plan.toSide ? toOffset : 0);
+      const startExit = moveOut(start, fromSide, routeGap);
+      const endExit = moveOut(end, toSide, routeGap);
+      const penalty = (fromSide === plan.fromSide ? 0 : 96) + (toSide === plan.toSide ? 0 : 96);
+      for (const points of candidateRoutes(start, startExit, endExit, end, plan.fromRect, plan.toRect, usedSegments)) {
+        candidates.push({ points, penalty });
+      }
+    }
+  }
   return bestRoute(candidates, obstacles, usedSegments, [endpointKey(plan.from), endpointKey(plan.to)]);
+}
+
+function routeSideChoices(side) {
+  if (side === 'left' || side === 'right') return [side, 'top', 'bottom'];
+  return [side, 'left', 'right'];
 }
 
 function routePathToPoint(from, fromPoint, point, obstacles) {
@@ -1072,9 +1085,11 @@ function candidateRoutes(start, startExit, endExit, end, fromRect, toRect, usedS
   ];
   for (const lane of horizontalLanes) {
     routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: endExit.x, y: lane }, endExit, end]));
+    routes.push(compactRoute([start, startExit, { x: startExit.x, y: lane }, { x: end.x, y: lane }, end]));
   }
   for (const lane of verticalLanes) {
     routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: endExit.y }, endExit, end]));
+    routes.push(compactRoute([start, startExit, { x: lane, y: startExit.y }, { x: lane, y: end.y }, end]));
   }
   return routes;
 }
@@ -1102,9 +1117,11 @@ function laneOutsideRect(lane, axis, rect) {
 
 function bestRoute(candidates, obstacles, usedSegments, endpointKeys) {
   let best = null;
-  for (const points of candidates) {
+  for (const candidate of candidates) {
+    const points = Array.isArray(candidate) ? candidate : candidate.points;
+    const penalty = Array.isArray(candidate) ? 0 : candidate.penalty || 0;
     const segments = pathSegments(points);
-    const score = routeScore(points, segments, obstacles, usedSegments, endpointKeys);
+    const score = routeScore(points, segments, obstacles, usedSegments, endpointKeys) + penalty;
     if (!best || score < best.score) {
       best = { d: pointsToPath(points), segments, score };
     }
