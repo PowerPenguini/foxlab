@@ -990,7 +990,7 @@ function portOffsets(plans) {
   for (const [, items] of groups) {
     items.sort((a, b) => a.sort - b.sort || a.edge.key.localeCompare(b.edge.key));
     for (let i = 0; i < items.length; i++) {
-      offsets.set(`${items[i].edge.key}:${items[i].end}`, sidePortOffset(items[i].side, i, items.length));
+      offsets.set(`${items[i].edge.key}:${items[i].end}`, portOffset(i, items.length));
     }
   }
   return offsets;
@@ -1016,14 +1016,9 @@ function portSortValue(side, rect, otherRect) {
   return Math.atan2(dx, Math.max(gridSize, Math.abs(dy)));
 }
 
-function sidePortOffset(side, index, count) {
+function portOffset(index, count) {
   if (count <= 1) return 0;
-  const span = side === 'top' || side === 'bottom'
-    ? nodeWidth - routeGap * 2
-    : Math.max(routeLaneGap * 2, nodeHeight - gridSize * 2);
-  const maxSteps = Math.max(1, Math.floor(span / (gridSize * 2)));
-  const lane = -maxSteps + (maxSteps * 2 * index) / (count - 1);
-  return snapValue(lane * gridSize);
+  return (index - (count - 1) / 2) * routeLaneGap;
 }
 
 function routeBetweenNodes(plan, obstacles, usedSegments, offsets) {
