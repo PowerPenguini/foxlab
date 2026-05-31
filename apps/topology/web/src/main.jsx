@@ -1142,7 +1142,10 @@ function routeScore(points, segments, obstacles, usedSegments, endpointKeys) {
   let score = pathLength(segments) + bendCount(points) * 12;
   for (const segment of segments) {
     for (const obstacle of obstacles) {
-      if (endpointSet.has(obstacle.key)) continue;
+      if (endpointSet.has(obstacle.key)) {
+        if (segmentRunsAlongRectEdge(segment, obstacle)) score += 8000;
+        continue;
+      }
       if (segmentIntersectsRect(segment, expandRect(obstacle, 8))) score += 10000;
       else if (segmentIntersectsRect(segment, expandRect(obstacle, 20))) score += 400;
     }
@@ -1152,6 +1155,16 @@ function routeScore(points, segments, obstacles, usedSegments, endpointKeys) {
     }
   }
   return score;
+}
+
+function segmentRunsAlongRectEdge(segment, rect) {
+  if (segment.vertical && (segment.x1 === rect.left || segment.x1 === rect.right)) {
+    return rangeOverlap(segment.y1, segment.y2, rect.top, rect.bottom) > 0;
+  }
+  if (segment.horizontal && (segment.y1 === rect.top || segment.y1 === rect.bottom)) {
+    return rangeOverlap(segment.x1, segment.x2, rect.left, rect.right) > 0;
+  }
+  return false;
 }
 
 function nodeRect(point) {
