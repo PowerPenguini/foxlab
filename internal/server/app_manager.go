@@ -56,9 +56,21 @@ type runningApp struct {
 	cleanup  func()
 }
 
+type extractedApp struct {
+	dir      string
+	manifest *foxapp.Manifest
+	cleanup  func()
+}
+
 type appProcess struct {
 	done chan struct{}
 	err  error
+}
+
+type managedWindowTarget struct {
+	host string
+	port string
+	path string
 }
 
 func NewAppManager(cfg Config, wmAddr string) *AppManager {
@@ -117,67 +129,76 @@ func (m *AppManager) Status(id string) (AppStatus, error) {
 	return m.statusFromDefinition(id, def), nil
 }
 
-func (m *AppManager) Start(id string, options ...AppStartOptions) (AppStatus, error) {
-	opts := appStartOptions(options)
+func (m *AppManager) Start(id string, opts AppStartOptions) (AppStatus, error) {
 	def, err := m.definition(id)
 	if err != nil {
 		return AppStatus{ID: id, State: "missing", Error: err.Error()}, err
 	}
 	status := statusForManifest(def.Manifest)
 
-	m.mu.Lock()
-	if app := m.running[id]; app != nil {
-		status = statusForManifest(app.manifest)
-		status.State = "running"
-		status.URL = app.url
-		m.mu.Unlock()
+	if status, app, ok := m.runningStatus(id); ok {
 		if opts.WMPath != "" {
 			_ = openManagedWindow(m.wmAddr, app.manifest, app.url, opts.WMPath)
 		}
 		return status, nil
 	}
-	m.mu.Unlock()
 
 	if m.wmAddr == "" {
-		err := fmt.Errorf("wm grpc server is not available")
-		m.setError(id, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
-	}
-	extractDir, err := os.MkdirTemp("", "foxapp-*")
-	if err != nil {
-		m.setError(id, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
-	}
-	cleanup := func() { _ = os.RemoveAll(extractDir) }
-	if err := foxapp.Extract(def.PackagePath, extractDir); err != nil {
-		cleanup()
-		m.setError(id, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
-	}
-	manifest, err := foxapp.LoadManifestDir(extractDir)
-	if err != nil {
-		cleanup()
-		m.setError(id, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
-	}
-	status = statusForManifest(manifest)
-	addr, err := freeLoopbackAddr()
-	if err != nil {
-		cleanup()
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
+		return m.errorStatus(id, status, fmt.Errorf("wm grpc server is not available"))
 	}
 
-	cmd := foxapp.PackageCommand(extractDir, manifest, foxapp.Runtime{
+	app, err := extractApp(def.PackagePath)
+	if err != nil {
+		return m.errorStatus(id, status, err)
+	}
+	status = statusForManifest(app.manifest)
+
+	running, err := m.launchExtractedApp(id, app, opts)
+	if err != nil {
+		return m.errorStatus(id, status, err)
+	}
+
+	if err := waitForAppReady(running.url+running.manifest.Health.Path, running.proc); err != nil {
+		_ = running.cmd.Process.Kill()
+		<-running.proc.done
+		m.removeRunning(id, running.cmd, err)
+		return errorAppStatus(status, err), err
+	}
+
+	status.State = "running"
+	status.URL = running.url
+	return status, nil
+}
+
+func extractApp(packagePath string) (*extractedApp, error) {
+	dir, err := os.MkdirTemp("", "foxapp-*")
+	if err != nil {
+		return nil, err
+	}
+	app := &extractedApp{
+		dir:     dir,
+		cleanup: func() { _ = os.RemoveAll(dir) },
+	}
+	if err := foxapp.Extract(packagePath, dir); err != nil {
+		app.cleanup()
+		return nil, err
+	}
+	manifest, err := foxapp.LoadManifestDir(dir)
+	if err != nil {
+		app.cleanup()
+		return nil, err
+	}
+	app.manifest = manifest
+	return app, nil
+}
+
+func (m *AppManager) launchExtractedApp(id string, app *extractedApp, opts AppStartOptions) (*runningApp, error) {
+	addr, err := freeLoopbackAddr()
+	if err != nil {
+		app.cleanup()
+		return nil, err
+	}
+	cmd := foxapp.PackageCommand(app.dir, app.manifest, foxapp.Runtime{
 		Addr:       addr,
 		Workspace:  m.cfg.Workspace,
 		LibvirtURI: m.cfg.LibvirtURI,
@@ -186,11 +207,8 @@ func (m *AppManager) Start(id string, options ...AppStartOptions) (AppStatus, er
 		Env:        []string{"FOXLAB_APP_DIRS=" + strings.Join(m.appDirs, string(os.PathListSeparator))},
 	})
 	if err := cmd.Start(); err != nil {
-		cleanup()
-		m.setError(id, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
+		app.cleanup()
+		return nil, err
 	}
 
 	proc := &appProcess{done: make(chan struct{})}
@@ -199,33 +217,20 @@ func (m *AppManager) Start(id string, options ...AppStartOptions) (AppStatus, er
 		close(proc.done)
 	}()
 
-	url := foxapp.URLForAddr(addr)
+	running := &runningApp{
+		cmd:      cmd,
+		proc:     proc,
+		url:      foxapp.URLForAddr(addr),
+		manifest: app.manifest,
+		cleanup:  app.cleanup,
+	}
 	m.mu.Lock()
-	m.running[id] = &runningApp{cmd: cmd, proc: proc, url: url, manifest: manifest, cleanup: cleanup}
+	m.running[id] = running
 	m.lastErr[id] = ""
 	m.mu.Unlock()
 
 	go m.trackExit(id, cmd, proc)
-
-	if err := waitForAppReady(url+manifest.Health.Path, proc); err != nil {
-		_ = cmd.Process.Kill()
-		<-proc.done
-		m.removeRunning(id, cmd, err)
-		status.State = "error"
-		status.Error = err.Error()
-		return status, err
-	}
-
-	status.State = "running"
-	status.URL = url
-	return status, nil
-}
-
-func appStartOptions(options []AppStartOptions) AppStartOptions {
-	if len(options) == 0 {
-		return AppStartOptions{}
-	}
-	return options[0]
+	return running, nil
 }
 
 func (m *AppManager) Stop(id string) (AppStatus, error) {
@@ -367,6 +372,30 @@ func (m *AppManager) statusFromDefinition(id string, def AppDefinition) AppStatu
 	return status
 }
 
+func (m *AppManager) runningStatus(id string) (AppStatus, *runningApp, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	app := m.running[id]
+	if app == nil {
+		return AppStatus{}, nil, false
+	}
+	status := statusForManifest(app.manifest)
+	status.State = "running"
+	status.URL = app.url
+	return status, app, true
+}
+
+func (m *AppManager) errorStatus(id string, status AppStatus, err error) (AppStatus, error) {
+	m.setError(id, err)
+	return errorAppStatus(status, err), err
+}
+
+func errorAppStatus(status AppStatus, err error) AppStatus {
+	status.State = "error"
+	status.Error = err.Error()
+	return status
+}
+
 func absoluteAppDirs(appDirs []string) []string {
 	out := make([]string, 0, len(appDirs))
 	for _, dir := range appDirs {
@@ -434,25 +463,17 @@ func closeManagedWindow(wmAddr string, manifest *foxapp.Manifest, rawURL string)
 	if wmAddr == "" || manifest == nil || rawURL == "" {
 		return
 	}
-	parsed, err := url.Parse(rawURL)
+	target, err := managedWindowTargetFor(manifest, rawURL, "")
 	if err != nil {
 		return
-	}
-	host, port, err := net.SplitHostPort(parsed.Host)
-	if err != nil {
-		return
-	}
-	path := manifest.Window.Path
-	if path == "" {
-		path = "/"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_ = wm.CloseWindow(ctx, wmAddr, wm.CloseWindowRequest{
 		AppID: manifest.ID,
-		Host:  host,
-		Port:  port,
-		Path:  path,
+		Host:  target.host,
+		Port:  target.port,
+		Path:  target.path,
 	})
 }
 
@@ -460,22 +481,9 @@ func openManagedWindow(wmAddr string, manifest *foxapp.Manifest, rawURL, path st
 	if wmAddr == "" || manifest == nil || rawURL == "" {
 		return fmt.Errorf("window manager is not available")
 	}
-	parsed, err := url.Parse(rawURL)
+	target, err := managedWindowTargetFor(manifest, rawURL, path)
 	if err != nil {
 		return err
-	}
-	host, port, err := net.SplitHostPort(parsed.Host)
-	if err != nil {
-		return err
-	}
-	if path == "" {
-		path = manifest.Window.Path
-	}
-	if path == "" {
-		path = "/"
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -487,8 +495,29 @@ func openManagedWindow(wmAddr string, manifest *foxapp.Manifest, rawURL, path st
 			Type:  manifest.Icon.Type,
 			Value: manifest.Icon.Value,
 		},
-		Host: host,
-		Port: port,
-		Path: path,
+		Host: target.host,
+		Port: target.port,
+		Path: target.path,
 	})
+}
+
+func managedWindowTargetFor(manifest *foxapp.Manifest, rawURL, path string) (managedWindowTarget, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return managedWindowTarget{}, err
+	}
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		return managedWindowTarget{}, err
+	}
+	if path == "" {
+		path = manifest.Window.Path
+	}
+	if path == "" {
+		path = "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return managedWindowTarget{host: host, port: port, path: path}, nil
 }
