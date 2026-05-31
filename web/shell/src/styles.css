@@ -757,10 +757,12 @@ input:-webkit-autofill:focus {
   height: 22px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   padding: 0 9px;
   border: 1px solid var(--term-border);
   background: var(--term-bg);
   color: var(--term-ink);
+  line-height: 1;
   box-shadow: inset 0 0 0 1px #000;
 }
 
@@ -786,6 +788,13 @@ input:-webkit-autofill:focus {
 }
 
 .taskbar-item.active {
+  border-color: var(--ansi-cyan);
+  background: var(--ansi-cyan);
+  color: var(--term-inverse);
+  box-shadow: inset 0 0 0 1px var(--term-inverse);
+}
+
+.start-button.active {
   border-color: var(--ansi-cyan);
   background: var(--ansi-cyan);
   color: var(--term-inverse);
@@ -841,6 +850,80 @@ input:-webkit-autofill:focus {
 .desktop-status + .desktop-status {
   padding-left: 1ch;
   border-left: 1px solid var(--term-border);
+}
+
+.start-panel {
+  position: fixed;
+  left: 8px;
+  bottom: 36px;
+  z-index: 4;
+  width: 248px;
+  display: grid;
+  border: 1px solid var(--term-border-strong);
+  background: var(--term-panel);
+  box-shadow: 0 0 0 1px #000;
+}
+
+.start-panel-title {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--term-border);
+  color: var(--term-ink-strong);
+  background: var(--term-panel-2);
+  line-height: 1;
+}
+
+.start-panel-list {
+  display: grid;
+  gap: 1px;
+  padding: 5px;
+}
+
+.start-panel-item {
+  min-width: 0;
+  height: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1ch;
+  padding: 0 5px;
+  border: 0;
+  color: var(--term-ink);
+  line-height: 1;
+  text-align: left;
+  text-transform: none;
+}
+
+.start-panel-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-panel-item span + span {
+  color: var(--term-muted);
+}
+
+.start-panel-item:hover,
+.start-panel-item:focus-visible {
+  background: var(--ansi-cyan);
+  color: var(--term-inverse);
+  outline: 0;
+}
+
+.start-panel-item:hover span + span,
+.start-panel-item:focus-visible span + span {
+  color: var(--term-inverse);
+}
+
+.start-panel-item::before,
+.start-panel-item::after {
+  display: none;
+}
+
+.start-panel-empty {
+  padding: 4px 5px;
+  color: var(--term-muted);
 }
 
 .app {

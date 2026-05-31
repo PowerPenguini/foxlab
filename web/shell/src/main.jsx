@@ -20,6 +20,7 @@ function App() {
   const [appState, setAppState] = useState('stopped');
   const [message, setMessage] = useState('');
   const [launching, setLaunching] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
 
   useEffect(() => {
     apiJSON('/api/apps')
@@ -85,6 +86,7 @@ function App() {
       return;
     }
     setLaunching(true);
+    setStartOpen(false);
     setMessage(`starting ${meta.name}`);
     try {
       const data = await apiJSON(`/api/apps/${encodeURIComponent(meta.id)}`, { method: 'POST' });
@@ -289,7 +291,7 @@ function App() {
 
       <footer className="desktop-bar" aria-label="window bar">
         <div className="desktop-bar-brand">
-          <span className="start-button">foxlab</span>
+          <button className={`start-button ${startOpen ? 'active' : ''}`} onClick={() => setStartOpen((current) => !current)}>foxlab</button>
         </div>
         <div className="taskbar-list" aria-label="open windows">
           {windows.map((item) => (
@@ -305,6 +307,22 @@ function App() {
           <span className={`desktop-status ${appState === 'error' ? 'message-error' : ''}`}>{barStatus}</span>
         </div>
       </footer>
+
+      {startOpen && (
+        <nav className="start-panel" aria-label="foxlab apps">
+          <div className="start-panel-title">apps</div>
+          <div className="start-panel-list">
+            {apps.length === 0 ? (
+              <span className="start-panel-empty">no apps</span>
+            ) : apps.map((meta) => (
+              <button key={meta.id} className="start-panel-item" onClick={() => openApp(meta)}>
+                <span>{taskbarLabel(meta)}</span>
+                <span>{meta.state || 'stopped'}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }
