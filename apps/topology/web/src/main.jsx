@@ -430,6 +430,7 @@ function StatusLine({ mode, commandMode, commandText, setCommandText, commandInp
 function Topology({ lab, status, selected, setSelected, moveNode, connectNodes }) {
   const canvasRef = useRef(null);
   const [connecting, setConnecting] = useState(null);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const nodes = lab.layout?.nodes || {};
   const vms = lab.vms || [];
   const switches = lab.switches || [];
@@ -462,7 +463,7 @@ function Topology({ lab, status, selected, setSelected, moveNode, connectNodes }
   function canvasPoint(event) {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return { x: event.clientX - rect.left - pan.x, y: event.clientY - rect.top - pan.y };
   }
 
   function snapCanvasPoint(event) {
@@ -523,55 +524,83 @@ function Topology({ lab, status, selected, setSelected, moveNode, connectNodes }
     window.addEventListener('pointerup', onUp);
   }
 
+  function startPan(event) {
+    if (event.button !== 0 || event.target !== canvasRef.current) return;
+    event.preventDefault();
+    setSelected(null);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const origin = { ...pan };
+    canvasRef.current?.setPointerCapture?.(event.pointerId);
+    function onMove(move) {
+      setPan({ x: origin.x + move.clientX - startX, y: origin.y + move.clientY - startY });
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
   return (
-    <div className="canvas" ref={canvasRef}>
-      <svg className="links">
-        {lines.map((line) => (
-          <path key={line.key} d={line.d} className={line.draft ? 'draft' : ''} />
+    <div
+      className="canvas"
+      ref={canvasRef}
+      onPointerDown={startPan}
+      style={{
+        backgroundPosition: `${pan.x}px ${pan.y}px, ${pan.x}px ${pan.y}px, ${pan.x}px ${pan.y}px, ${pan.x}px ${pan.y}px`,
+      }}
+    >
+      <div className="topology-plane" style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
+        <svg className="links">
+          {lines.map((line) => (
+            <path key={line.key} d={line.d} className={line.draft ? 'draft' : ''} />
+          ))}
+        </svg>
+        {vms.map((vm) => (
+          <Node
+            key={vm.id}
+            id={vm.id}
+            label={vm.name || vm.id}
+            type="vm"
+            state={resourceState(status, 'vm', vm.id)}
+            point={nodes[vm.id] || { x: 80, y: 80 }}
+            active={selected?.type === 'vm' && selected?.id === vm.id}
+            setSelected={setSelected}
+            moveNode={moveNode}
+            onConnectStart={startConnect}
+          />
         ))}
-      </svg>
-      {vms.map((vm) => (
-        <Node
-          key={vm.id}
-          id={vm.id}
-          label={vm.name || vm.id}
-          type="vm"
-          state={resourceState(status, 'vm', vm.id)}
-          point={nodes[vm.id] || { x: 80, y: 80 }}
-          active={selected?.type === 'vm' && selected?.id === vm.id}
-          setSelected={setSelected}
-          moveNode={moveNode}
-          onConnectStart={startConnect}
-        />
-      ))}
-      {switches.map((sw) => (
-        <Node
-          key={sw.id}
-          id={sw.id}
-          label={sw.name || sw.id}
-          type="switch"
-          state={resourceState(status, 'switch', sw.id)}
-          point={nodes[sw.id] || { x: 320, y: 160 }}
-          active={selected?.type === 'switch' && selected?.id === sw.id}
-          setSelected={setSelected}
-          moveNode={moveNode}
-          onConnectStart={startConnect}
-        />
-      ))}
-      {externalLinks.map((link) => (
-        <Node
-          key={link.id}
-          id={link.id}
-          label={link.name || link.interface || link.id}
-          type="external"
-          state={resourceState(status, 'external', link.id)}
-          point={nodes[link.id] || { x: 560, y: 160 }}
-          active={selected?.type === 'external' && selected?.id === link.id}
-          setSelected={setSelected}
-          moveNode={moveNode}
-          onConnectStart={startConnect}
-        />
-      ))}
+        {switches.map((sw) => (
+          <Node
+            key={sw.id}
+            id={sw.id}
+            label={sw.name || sw.id}
+            type="switch"
+            state={resourceState(status, 'switch', sw.id)}
+            point={nodes[sw.id] || { x: 320, y: 160 }}
+            active={selected?.type === 'switch' && selected?.id === sw.id}
+            setSelected={setSelected}
+            moveNode={moveNode}
+            onConnectStart={startConnect}
+          />
+        ))}
+        {externalLinks.map((link) => (
+          <Node
+            key={link.id}
+            id={link.id}
+            label={link.name || link.interface || link.id}
+            type="external"
+            state={resourceState(status, 'external', link.id)}
+            point={nodes[link.id] || { x: 560, y: 160 }}
+            active={selected?.type === 'external' && selected?.id === link.id}
+            setSelected={setSelected}
+            moveNode={moveNode}
+            onConnectStart={startConnect}
+          />
+        ))}
+      </div>
     </div>
   );
 }
