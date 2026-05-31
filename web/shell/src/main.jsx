@@ -21,6 +21,8 @@ function App() {
   const [message, setMessage] = useState('');
   const [launching, setLaunching] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
+  const [desktopPath, setDesktopPath] = useState('');
+  const [desktopListing, setDesktopListing] = useState(null);
 
   useEffect(() => {
     apiJSON('/api/apps')
@@ -40,6 +42,10 @@ function App() {
         setMessage(err.message);
       });
   }, []);
+
+  useEffect(() => {
+    loadDesktopPath(desktopPath);
+  }, [desktopPath]);
 
   useEffect(() => {
     const events = new EventSource('/api/wm/events');
@@ -78,7 +84,18 @@ function App() {
     return () => events.close();
   }, []);
 
-  async function openApp(meta) {
+  async function loadDesktopPath(nextPath) {
+    try {
+      const suffix = nextPath ? `?path=${encodeURIComponent(nextPath)}` : '';
+      const data = await apiJSON(`/api/desktop${suffix}`);
+      setDesktopListing(data);
+    } catch (err) {
+      setAppState('error');
+      setMessage(err.message);
+    }
+  }
+
+  async function openApp(meta, options = {}) {
     if (launching) return;
     if (!meta?.id) {
       setAppState('missing');
@@ -89,7 +106,8 @@ function App() {
     setStartOpen(false);
     setMessage(`starting ${meta.name}`);
     try {
-      const data = await apiJSON(`/api/apps/${encodeURIComponent(meta.id)}`, { method: 'POST' });
+      const suffix = options.wmPath ? `?path=${encodeURIComponent(options.wmPath)}` : '';
+      const data = await apiJSON(`/api/apps/${encodeURIComponent(meta.id)}${suffix}`, { method: 'POST' });
       setApps((current) => updateAppMeta(current, appMetaFromStatus(data), data.state || 'starting'));
       setAppState(data.state || 'starting');
       setMessage('waiting for wm request');
@@ -148,10 +166,28 @@ function App() {
     setActiveWindowId(windowId);
   }
 
-  function openWindowFromKey(meta, event) {
+  function openDesktopEntry(entry) {
+    if (entry.type === 'dir') {
+      setDesktopPath(entry.path);
+      return;
+    }
+    openInFiles(parentPath(entry.path));
+  }
+
+  function openDesktopEntryFromKey(entry, event) {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    openApp(meta);
+    openDesktopEntry(entry);
+  }
+
+  function openInFiles(path) {
+    const filesApp = apps.find((item) => item.id === 'files') || apps.find((item) => item.name?.toLowerCase() === 'files');
+    if (!filesApp) {
+      setAppState('missing');
+      setMessage('files app is not available');
+      return;
+    }
+    openApp(filesApp, { wmPath: `/?path=${encodeURIComponent(path || '/')}` });
   }
 
   function startWindowDrag(event, item) {
@@ -228,27 +264,28 @@ function App() {
   const visibleWindows = windows.filter((item) => !item.minimized);
   const activeWindow = windows.find((item) => item.id === activeWindowId);
   const barStatus = message || (activeWindow ? taskbarLabel(activeWindow.appMeta) : windows.length > 0 ? `${windows.length} windows` : 'ready');
+  const desktopEntries = desktopListing ? [
+    ...(desktopListing.parent ? [{ name: '..', path: desktopListing.parent, type: 'dir', parent: true }] : []),
+    ...(desktopListing.entries || []),
+  ] : [];
 
   return (
     <div className="desktop">
       <pre className="desktop-wordmark" aria-label="FOXLAB">{foxlabAscii}</pre>
       <div className="desktop-icons">
-        {apps.map((meta, index) => {
-          const appWindowOpen = windows.some((item) => item.appMeta.id === meta.id);
-          return (
-            <button
-              key={meta.id}
-              className={`desktop-icon ${appWindowOpen ? 'active' : ''}`}
-              style={desktopIconPosition(index)}
-              onDoubleClick={() => openApp(meta)}
-              onKeyDown={(event) => openWindowFromKey(meta, event)}
-              aria-label={`Open ${meta.name}`}
-            >
-              <AppIcon icon={meta.icon} />
-              <span className="desktop-icon-label">{meta.name}</span>
-            </button>
-          );
-        })}
+        {desktopEntries.map((entry, index) => (
+          <button
+            key={`desktop:${entry.path}`}
+            className="desktop-icon desktop-file"
+            style={desktopIconPosition(index)}
+            onDoubleClick={() => openDesktopEntry(entry)}
+            onKeyDown={(event) => openDesktopEntryFromKey(entry, event)}
+            aria-label={`Open ${entry.name}`}
+          >
+            <FileIcon entry={entry} />
+            <span className="desktop-icon-label">{entry.name}</span>
+          </button>
+        ))}
       </div>
 
       {visibleWindows.map((item) => {
@@ -396,37 +433,8 @@ function nextZ(windows) {
   return Math.max(9, ...windows.map((item) => item.z || 0)) + 1;
 }
 
-function AppIcon({ icon }) {
-  if (icon?.type === 'builtin' && icon?.value === 'network') {
-    return (
-      <span className="desktop-icon-art" aria-hidden="true">
-        <span className="desktop-icon-edge edge-left" />
-        <span className="desktop-icon-edge edge-right" />
-        <span className="desktop-icon-node node-root" />
-        <span className="desktop-icon-node node-left" />
-        <span className="desktop-icon-node node-right" />
-      </span>
-    );
-  }
-  if (icon?.type === 'builtin' && icon?.value === 'monitor') {
-    return (
-      <span className="desktop-icon-art desktop-icon-monitor" aria-hidden="true">
-        <span className="monitor-screen" />
-        <span className="monitor-neck" />
-        <span className="monitor-base" />
-      </span>
-    );
-  }
-  if (icon?.type === 'builtin' && icon?.value === 'terminal') {
-    return (
-      <span className="desktop-icon-art desktop-icon-terminal" aria-hidden="true">
-        <span className="terminal-window" />
-        <span className="terminal-prompt" />
-        <span className="terminal-cursor" />
-      </span>
-    );
-  }
-  if (icon?.type === 'builtin' && icon?.value === 'folder') {
+function FileIcon({ entry }) {
+  if (entry.type === 'dir') {
     return (
       <span className="desktop-icon-art desktop-icon-folder" aria-hidden="true">
         <span className="folder-tab" />
@@ -435,7 +443,23 @@ function AppIcon({ icon }) {
       </span>
     );
   }
-  return <span className="desktop-icon-art desktop-icon-glyph" aria-hidden="true">{(icon?.value || '?').slice(0, 2)}</span>;
+  if (isDiskImage(entry.name)) {
+    return (
+      <span className="desktop-icon-art desktop-icon-disk" aria-hidden="true">
+        <span className="disk-platter" />
+        <span className="disk-line" />
+        <span className="disk-dot" />
+      </span>
+    );
+  }
+  return (
+    <span className="desktop-icon-art desktop-icon-file" aria-hidden="true">
+      <span className="file-page" />
+      <span className="file-fold" />
+      <span className="file-line line-one" />
+      <span className="file-line line-two" />
+    </span>
+  );
 }
 
 function appMetaFromStatus(data = {}) {
@@ -458,6 +482,17 @@ function appMetaFromWindow(detail = {}) {
 
 function taskbarLabel(meta) {
   return (meta.id || meta.name || 'app').toLowerCase().replaceAll(' ', '-');
+}
+
+function parentPath(path) {
+  const clean = String(path || '/').replace(/\/+$/, '') || '/';
+  if (clean === '/') return '/';
+  const index = clean.lastIndexOf('/');
+  return index <= 0 ? '/' : clean.slice(0, index);
+}
+
+function isDiskImage(name) {
+  return /\.(qcow2?|img|raw|vmdk)$/i.test(name || '');
 }
 
 function windowURL(detail) {

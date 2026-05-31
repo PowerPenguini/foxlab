@@ -44,6 +44,10 @@ type AppDefinition struct {
 	Manifest    *foxapp.Manifest
 }
 
+type AppStartOptions struct {
+	WMPath string
+}
+
 type runningApp struct {
 	cmd      *exec.Cmd
 	proc     *appProcess
@@ -113,7 +117,8 @@ func (m *AppManager) Status(id string) (AppStatus, error) {
 	return m.statusFromDefinition(id, def), nil
 }
 
-func (m *AppManager) Start(id string) (AppStatus, error) {
+func (m *AppManager) Start(id string, options ...AppStartOptions) (AppStatus, error) {
+	opts := appStartOptions(options)
 	def, err := m.definition(id)
 	if err != nil {
 		return AppStatus{ID: id, State: "missing", Error: err.Error()}, err
@@ -126,6 +131,9 @@ func (m *AppManager) Start(id string) (AppStatus, error) {
 		status.State = "running"
 		status.URL = app.url
 		m.mu.Unlock()
+		if opts.WMPath != "" {
+			_ = openManagedWindow(m.wmAddr, app.manifest, app.url, opts.WMPath)
+		}
 		return status, nil
 	}
 	m.mu.Unlock()
@@ -174,6 +182,7 @@ func (m *AppManager) Start(id string) (AppStatus, error) {
 		Workspace:  m.cfg.Workspace,
 		LibvirtURI: m.cfg.LibvirtURI,
 		WMAddr:     m.wmAddr,
+		WMPath:     opts.WMPath,
 		Env:        []string{"FOXLAB_APP_DIRS=" + strings.Join(m.appDirs, string(os.PathListSeparator))},
 	})
 	if err := cmd.Start(); err != nil {
@@ -210,6 +219,13 @@ func (m *AppManager) Start(id string) (AppStatus, error) {
 	status.State = "running"
 	status.URL = url
 	return status, nil
+}
+
+func appStartOptions(options []AppStartOptions) AppStartOptions {
+	if len(options) == 0 {
+		return AppStartOptions{}
+	}
+	return options[0]
 }
 
 func (m *AppManager) Stop(id string) (AppStatus, error) {
@@ -437,5 +453,42 @@ func closeManagedWindow(wmAddr string, manifest *foxapp.Manifest, rawURL string)
 		Host:  host,
 		Port:  port,
 		Path:  path,
+	})
+}
+
+func openManagedWindow(wmAddr string, manifest *foxapp.Manifest, rawURL, path string) error {
+	if wmAddr == "" || manifest == nil || rawURL == "" {
+		return fmt.Errorf("window manager is not available")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil {
+		return err
+	}
+	if path == "" {
+		path = manifest.Window.Path
+	}
+	if path == "" {
+		path = "/"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	return wm.OpenWindow(ctx, wmAddr, wm.OpenWindowRequest{
+		AppID: manifest.ID,
+		Name:  manifest.Name,
+		Title: manifest.Window.Title,
+		Icon: wm.Icon{
+			Type:  manifest.Icon.Type,
+			Value: manifest.Icon.Value,
+		},
+		Host: host,
+		Port: port,
+		Path: path,
 	})
 }

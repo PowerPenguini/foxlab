@@ -107,6 +107,7 @@ func NewTopology(cfg Config) *http.Server {
 func (s *Server) shellRoutes() {
 	s.mux.HandleFunc("/api/apps", s.handleApps)
 	s.mux.HandleFunc("/api/apps/", s.handleApp)
+	s.mux.HandleFunc("/api/desktop", s.handleDesktop)
 	s.mux.HandleFunc("/api/wm/events", s.handleWMEvents)
 	s.mux.HandleFunc("/", s.handleShellStatic)
 }
@@ -190,7 +191,7 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, status)
 	case http.MethodPost:
-		status, err := s.apps.Start(id)
+		status, err := s.apps.Start(id, AppStartOptions{WMPath: r.URL.Query().Get("path")})
 		if err != nil {
 			if status.State == "missing" {
 				writeError(w, err, http.StatusNotFound)
@@ -214,6 +215,51 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+type desktopListResponse struct {
+	Path    string             `json:"path"`
+	Parent  string             `json:"parent,omitempty"`
+	Entries []desktopEntryItem `json:"entries"`
+}
+
+type desktopEntryItem struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Type     string `json:"type"`
+	Size     int64  `json:"size"`
+	Modified string `json:"modified"`
+}
+
+func (s *Server) handleDesktop(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/desktop" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	root, err := filepath.Abs(s.cfg.Workspace)
+	if err != nil {
+		writeError(w, err, http.StatusInternalServerError)
+		return
+	}
+	path, err := cleanDesktopPath(root, r.URL.Query().Get("path"))
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	entries, err := desktopEntries(path)
+	if err != nil {
+		writeError(w, err, statusFor(err))
+		return
+	}
+	writeJSON(w, desktopListResponse{
+		Path:    path,
+		Parent:  desktopParent(root, path),
+		Entries: entries,
+	})
 }
 
 func (s *Server) handleLabs(w http.ResponseWriter, r *http.Request) {
@@ -845,6 +891,72 @@ func isoSearchDirs() []string {
 		out = append(out, dir)
 	}
 	return out
+}
+
+func cleanDesktopPath(root, raw string) (string, error) {
+	if raw == "" {
+		return filepath.Clean(root), nil
+	}
+	var path string
+	if filepath.IsAbs(raw) {
+		path = filepath.Clean(raw)
+	} else {
+		path = filepath.Clean(filepath.Join(root, raw))
+	}
+	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		return "", fmt.Errorf("desktop path escapes workspace")
+	}
+	return path, nil
+}
+
+func desktopEntries(path string) ([]desktopEntryItem, error) {
+	items, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]desktopEntryItem, 0, len(items))
+	for _, item := range items {
+		if strings.HasPrefix(item.Name(), ".") {
+			continue
+		}
+		info, err := item.Info()
+		if err != nil {
+			continue
+		}
+		itemType := "file"
+		if info.IsDir() {
+			itemType = "dir"
+		}
+		entries = append(entries, desktopEntryItem{
+			Name:     item.Name(),
+			Path:     filepath.Join(path, item.Name()),
+			Type:     itemType,
+			Size:     info.Size(),
+			Modified: info.ModTime().Format(time.RFC3339),
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Type != entries[j].Type {
+			return entries[i].Type == "dir"
+		}
+		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	})
+	return entries, nil
+}
+
+func desktopParent(root, path string) string {
+	clean := filepath.Clean(path)
+	if clean == filepath.Clean(root) {
+		return ""
+	}
+	parent := filepath.Dir(clean)
+	if parent == clean || parent == "." {
+		return ""
+	}
+	if parent != root && !strings.HasPrefix(parent, root+string(filepath.Separator)) {
+		return ""
+	}
+	return parent
 }
 
 func (s *Server) handleShellStatic(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,7 @@ const roots = [
 ];
 
 function App() {
-  const [path, setPath] = useState('/');
+  const [path, setPath] = useState(initialPath());
   const [listing, setListing] = useState(null);
   const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -299,6 +299,11 @@ async function apiJSON(url, options = {}) {
 
 function homePath() {
   return '/home';
+}
+
+function initialPath() {
+  const value = new URLSearchParams(window.location.search).get('path');
+  return value || '/';
 }
 
 function dedupeRoots(items) {

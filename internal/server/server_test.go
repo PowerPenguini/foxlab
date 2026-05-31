@@ -46,6 +46,54 @@ func TestShellAndTopologyAppsExposeSeparateRoutes(t *testing.T) {
 	assertStatus(t, topology, http.MethodGet, "/api/apps/topology", http.StatusNotFound)
 }
 
+func TestShellDesktopListsWorkspaceDirectory(t *testing.T) {
+	chdirRepoRoot(t)
+	workspace := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workspace, "labs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(workspace, "vm1.qcow2"), "disk")
+	writeTestFile(t, filepath.Join(workspace, "notes.txt"), "notes")
+
+	shell := NewShell(Config{Workspace: workspace})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/desktop", nil)
+	shell.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/desktop returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var listing desktopListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &listing); err != nil {
+		t.Fatal(err)
+	}
+	if listing.Path != workspace {
+		t.Fatalf("path = %q, want %q", listing.Path, workspace)
+	}
+	if len(listing.Entries) != 3 {
+		t.Fatalf("unexpected entries: %+v", listing.Entries)
+	}
+	if listing.Entries[0].Name != "labs" || listing.Entries[0].Type != "dir" {
+		t.Fatalf("directories should sort first: %+v", listing.Entries)
+	}
+	if listing.Entries[1].Name != "notes.txt" || listing.Entries[2].Name != "vm1.qcow2" {
+		t.Fatalf("files should sort by name: %+v", listing.Entries)
+	}
+}
+
+func TestShellDesktopRejectsPathOutsideWorkspace(t *testing.T) {
+	chdirRepoRoot(t)
+	shell := NewShell(Config{Workspace: t.TempDir()})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/desktop?path=/", nil)
+	shell.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("GET /api/desktop outside workspace returned %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestTopologyLabDocumentEndpointPersistsDeclarativeConfig(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
