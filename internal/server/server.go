@@ -273,9 +273,9 @@ func (s *Server) handleLab(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/console/open") && r.Method == http.MethodPost:
 		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/console/open")
 		s.openConsoleResponse(w, labID, vmID)
-	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/text-console/open") && r.Method == http.MethodPost:
-		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/text-console/open")
-		s.openTextConsoleResponse(w, labID, vmID)
+	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/shell-console/open") && r.Method == http.MethodPost:
+		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/shell-console/open")
+		s.openShellConsoleResponse(w, labID, vmID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -424,7 +424,7 @@ func (s *Server) statusLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, status)
 }
 
-func (s *Server) openTextConsoleResponse(w http.ResponseWriter, labID, vmID string) {
+func (s *Server) openShellConsoleResponse(w http.ResponseWriter, labID, vmID string) {
 	if s.cfg.WMAddr == "" {
 		writeError(w, fmt.Errorf("wm grpc server is not available"), http.StatusInternalServerError)
 		return
@@ -439,7 +439,7 @@ func (s *Server) openTextConsoleResponse(w http.ResponseWriter, labID, vmID stri
 		writeError(w, fmt.Errorf("vm %q not found", vmID), http.StatusNotFound)
 		return
 	}
-	status, err := s.launchTextConsole(loaded, vm)
+	status, err := s.launchShellConsole(loaded, vm)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
@@ -539,7 +539,7 @@ func (s *Server) launchVNCViewer(loaded *lab.Lab, vmID string, info *virt.Consol
 	return status, nil
 }
 
-func (s *Server) launchTextConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, error) {
+func (s *Server) launchShellConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, error) {
 	def, err := s.discoverAppDefinition("terminal")
 	if err != nil {
 		return AppStatus{}, err
@@ -569,7 +569,7 @@ func (s *Server) launchTextConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, error
 		Workspace:  s.cfg.Workspace,
 		LibvirtURI: s.cfg.LibvirtURI,
 		WMAddr:     s.cfg.WMAddr,
-		WMTitle:    "Text console " + label,
+		WMTitle:    "Shell console " + label,
 		ExtraArgs: []string{
 			"--command", "exec " + shellJoin(virshConsoleCommand(s.cfg.LibvirtURI, loaded.ManagedDomainName(vm))),
 		},

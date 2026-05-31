@@ -225,7 +225,7 @@ func TestTopologyLaunchesVNCViewerPackageWithConsoleTarget(t *testing.T) {
 	}
 }
 
-func TestTopologyLaunchesTerminalPackageWithTextConsoleTarget(t *testing.T) {
+func TestTopologyLaunchesTerminalPackageWithShellConsoleTarget(t *testing.T) {
 	chdirRepoRoot(t)
 	appDir := t.TempDir()
 	argsPath := filepath.Join(t.TempDir(), "args.txt")
@@ -238,7 +238,7 @@ func TestTopologyLaunchesTerminalPackageWithTextConsoleTarget(t *testing.T) {
 		WMAddr:     "127.0.0.1:1",
 		AppDirs:    []string{appDir},
 	}}
-	status, err := topology.launchTextConsole(
+	status, err := topology.launchShellConsole(
 		&lab.Lab{ID: "demo"},
 		lab.VM{ID: "vm1"},
 	)
@@ -256,7 +256,7 @@ func TestTopologyLaunchesTerminalPackageWithTextConsoleTarget(t *testing.T) {
 	args := string(data)
 	for _, want := range []string{
 		"--wm-app-id=terminal",
-		"--wm-title=Text console demo / vm1",
+		"--wm-title=Shell console demo / vm1",
 		"--command=exec 'virsh' '-c' 'qemu:///system' 'console' 'foxlab-demo-vm1'",
 	} {
 		if !strings.Contains(args, want) {

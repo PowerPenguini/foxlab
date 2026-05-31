@@ -733,7 +733,7 @@ function ConsoleInfo({ lab, vm }) {
   async function openConsole(kind) {
     setState(`${kind} opening`);
     setInfo(null);
-    const path = kind === 'text' ? 'text-console' : 'console';
+    const path = kind === 'shell' ? 'shell-console' : 'console';
     try {
       const data = await apiJSON(`/api/labs/${lab.id}/vms/${vm.id}/${path}/open`, {
         method: 'POST',
@@ -749,7 +749,7 @@ function ConsoleInfo({ lab, vm }) {
     <section className="console">
       <div className="console-actions">
         <button onClick={() => openConsole('vnc')} disabled={state === 'vnc opening' || !vm.vnc}>VNC console</button>
-        <button onClick={() => openConsole('text')} disabled={state === 'text opening'}>Text console</button>
+        <button onClick={() => openConsole('shell')} disabled={state === 'shell opening'}>Shell console</button>
       </div>
       {info?.error && <p className="message-error">{info.error}</p>}
       {state !== 'idle' && !info?.error && <p>console {state}</p>}
