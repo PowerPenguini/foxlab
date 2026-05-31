@@ -1,0 +1,95 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    "Berkeley Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  background: #050706;
+  color: #d8ded9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+.viewer-shell {
+  display: grid;
+  grid-template-rows: 28px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background: #050706;
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  border-bottom: 1px solid #24332b;
+  background: #0b100d;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.viewer-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e4ebe5;
+}
+
+.viewer-status {
+  flex: 0 0 auto;
+  color: #97a69d;
+}
+
+.viewer-status.connected {
+  color: #7ad99b;
+}
+
+.viewer-status.error,
+.viewer-status.disconnected {
+  color: #ff8f8f;
+}
+
+.viewer-frame {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #020403;
+}
+
+.viewer-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-canvas canvas {
+  outline: none;
+}
+
+.viewer-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: min(520px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  border: 1px solid #6d3434;
+  background: #1c0d0d;
+  color: #ffd4d4;
+  padding: 10px 12px;
+  font-size: 12px;
+}

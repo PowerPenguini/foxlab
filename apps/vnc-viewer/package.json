@@ -1,0 +1,10 @@
+{
+  "name": "foxlab-vnc-viewer-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix web run build",
+    "dev": "npm --prefix web run dev",
+    "preview": "npm --prefix web run preview"
+  }
+}

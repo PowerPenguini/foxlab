@@ -1,0 +1,23 @@
+{
+  "format": "foxapp.v1",
+  "id": "terminal",
+  "name": "Terminal",
+  "version": "0.1.0",
+  "run": {
+    "command": "bin/terminal"
+  },
+  "icon": {
+    "type": "builtin",
+    "value": "terminal"
+  },
+  "window": {
+    "title": "Terminal",
+    "path": "/"
+  },
+  "health": {
+    "path": "/healthz"
+  },
+  "web": {
+    "dist": "web/dist"
+  }
+}

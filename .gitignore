@@ -1,0 +1,35 @@
+# Local editor/agent state
+.agents/
+.codex/
+.env*
+*.log
+
+# Go build artifacts
+/foxlab
+/dist/
+
+# Kernel module build artifacts
+/build/
+*.ko
+*.o
+*.mod.c
+*.symvers
+modules.order
+
+# Built app binaries
+/apps/*/bin/
+
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+
+# Local lab runtime state
+/labs/
+/lab-1.yaml
+*.qcow2
+*.img
+*.iso
+
+# OS files
+.DS_Store
+Thumbs.db

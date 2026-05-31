@@ -1,0 +1,23 @@
+{
+  "format": "foxapp.v1",
+  "id": "vnc-viewer",
+  "name": "VNC Viewer",
+  "version": "0.1.0",
+  "run": {
+    "command": "bin/vnc-viewer"
+  },
+  "icon": {
+    "type": "builtin",
+    "value": "monitor"
+  },
+  "window": {
+    "title": "VNC Viewer",
+    "path": "/"
+  },
+  "health": {
+    "path": "/healthz"
+  },
+  "web": {
+    "dist": "web/dist"
+  }
+}

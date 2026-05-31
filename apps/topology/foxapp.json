@@ -1,0 +1,23 @@
+{
+  "format": "foxapp.v1",
+  "id": "topology",
+  "name": "Topology Editor",
+  "version": "0.1.0",
+  "run": {
+    "command": "bin/topology"
+  },
+  "icon": {
+    "type": "builtin",
+    "value": "network"
+  },
+  "window": {
+    "title": "Topology editor",
+    "path": "/"
+  },
+  "health": {
+    "path": "/healthz"
+  },
+  "web": {
+    "dist": "web/dist"
+  }
+}

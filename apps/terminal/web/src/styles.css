@@ -1,0 +1,59 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    "Berkeley Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  background: #020303;
+  color: #d6d6d6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #020303;
+}
+
+.terminal-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  background: #020303;
+}
+
+.terminal-frame {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, rgba(214, 214, 214, 0.026), rgba(214, 214, 214, 0.026) 1px, transparent 1px, transparent 5px),
+    #020303;
+}
+
+.terminal-host {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-host .xterm {
+  height: 100%;
+  padding: 0;
+}
+
+.terminal-host .xterm-viewport {
+  background-color: transparent !important;
+}
+
+.terminal-host .xterm-screen {
+  outline: none;
+}
