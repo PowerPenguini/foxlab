@@ -361,7 +361,7 @@ function App() {
   }, [selected, lab]);
 
   return (
-    <div className="app topology-root">
+    <div className="app topology-root" onContextMenu={(event) => event.preventDefault()}>
       <main className="workspace">
         <section className="stage">
           <header className="toolbar">

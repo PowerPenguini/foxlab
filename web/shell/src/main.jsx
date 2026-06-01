@@ -22,6 +22,7 @@ function App() {
   const [launching, setLaunching] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [desktopListing, setDesktopListing] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
 
   useEffect(() => {
     apiJSON('/api/apps')
@@ -91,6 +92,24 @@ function App() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [apps, launching]);
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    function close() {
+      setContextMenu(null);
+    }
+    function onKeyDown(event) {
+      if (event.key === 'Escape') close();
+    }
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
 
   async function loadDesktopPath(nextPath) {
     try {
@@ -182,6 +201,26 @@ function App() {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     openDesktopEntry(entry);
+  }
+
+  function blockContextMenu(event) {
+    event.preventDefault();
+    setContextMenu(null);
+  }
+
+  function openDesktopContextMenu(event, entry) {
+    event.preventDefault();
+    event.stopPropagation();
+    const items = [
+      { label: 'open', action: () => openDesktopEntry(entry) },
+    ];
+    if (entry.type !== 'dir') {
+      items.push({ label: 'show in files', action: () => openFile(parentPath(entry.path)) });
+    }
+    setContextMenu({
+      ...contextMenuPosition(event, items.length),
+      items,
+    });
   }
 
   async function openFile(path) {
@@ -285,7 +324,7 @@ function App() {
   const desktopEntries = desktopListing?.entries || [];
 
   return (
-    <div className="desktop">
+    <div className="desktop" onContextMenu={blockContextMenu}>
       <pre className="desktop-wordmark" aria-label="FOXLAB">{foxlabAscii}</pre>
       <div className="desktop-icons">
         {desktopEntries.map((entry, index) => (
@@ -295,6 +334,7 @@ function App() {
             style={desktopIconPosition(index)}
             onDoubleClick={() => openDesktopEntry(entry)}
             onKeyDown={(event) => openDesktopEntryFromKey(entry, event)}
+            onContextMenu={(event) => openDesktopContextMenu(event, entry)}
             aria-label={`Open ${entry.name}`}
           >
             <FileIcon entry={entry} />
@@ -375,6 +415,8 @@ function App() {
           </div>
         </nav>
       )}
+
+      <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
     </div>
   );
 }
@@ -413,6 +455,33 @@ function desktopIconPosition(index) {
     left: 18 + column * 104,
     top: 18 + row * 82,
   };
+}
+
+function ContextMenu({ menu, onClose }) {
+  if (!menu) return null;
+  return (
+    <div
+      className="context-menu"
+      style={{ left: menu.x, top: menu.y }}
+      role="menu"
+      onPointerDown={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {menu.items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onClose();
+            item.action();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function windowFromDetail(detail = {}, index = 0) {
@@ -508,6 +577,22 @@ function appMetaFromWindow(detail = {}) {
 
 function taskbarLabel(meta) {
   return (meta.id || meta.name || 'app').toLowerCase().replaceAll(' ', '-');
+}
+
+function parentPath(path) {
+  const clean = String(path || '/').replace(/\/+$/, '') || '/';
+  if (clean === '/') return '/';
+  const index = clean.lastIndexOf('/');
+  return index <= 0 ? '/' : clean.slice(0, index);
+}
+
+function contextMenuPosition(event, itemCount) {
+  const width = 176;
+  const height = Math.max(22, itemCount * 22 + 2);
+  return {
+    x: Math.max(4, Math.min(event.clientX, window.innerWidth - width - 4)),
+    y: Math.max(4, Math.min(event.clientY, window.innerHeight - height - 4)),
+  };
 }
 
 function isDiskImage(name) {
