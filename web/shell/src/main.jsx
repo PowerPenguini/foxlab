@@ -45,6 +45,7 @@ function App() {
 
   useEffect(() => {
     loadDesktopPath();
+    loadWindowState();
   }, []);
 
   useEffect(() => {
@@ -122,6 +123,27 @@ function App() {
     }
   }
 
+  async function loadWindowState() {
+    try {
+      const data = await apiJSON('/api/wm/windows');
+      const restoredWindows = normalizeWindows(data);
+      setWindows(restoredWindows);
+      const active = restoredWindows
+        .filter((item) => !item.minimized)
+        .sort((a, b) => (b.z || 0) - (a.z || 0))[0] || restoredWindows[0];
+      setActiveWindowId(active?.id || '');
+      setApps((current) => restoredWindows.reduce((next, item) => (
+        updateAppMeta(next, item.appMeta, 'running')
+      ), current));
+      if (restoredWindows.length > 0) {
+        setAppState('running');
+      }
+    } catch (err) {
+      setAppState('error');
+      setMessage(err.message);
+    }
+  }
+
   async function openApp(meta, options = {}) {
     if (launching) return;
     if (!meta?.id) {
@@ -150,6 +172,7 @@ function App() {
     event.stopPropagation();
     const closed = windows.find((item) => item.id === windowId);
     setWindows((current) => current.filter((item) => item.id !== windowId));
+    forgetWindow(windowId);
     if (activeWindowId === windowId) {
       const fallback = windows.find((item) => item.id !== windowId && !item.minimized);
       setActiveWindowId(fallback?.id || '');
@@ -171,7 +194,7 @@ function App() {
 
   function minimizeWindow(windowId, event) {
     event.stopPropagation();
-    updateWindow(windowId, { minimized: true });
+    updateWindow(windowId, { minimized: true }, true);
     if (activeWindowId === windowId) {
       const fallback = windows.find((item) => item.id !== windowId && !item.minimized);
       setActiveWindowId(fallback?.id || '');
@@ -179,18 +202,22 @@ function App() {
   }
 
   function restoreWindow(windowId) {
-    updateWindow(windowId, { minimized: false });
+    updateWindow(windowId, { minimized: false }, true);
     bringWindowToFront(windowId);
   }
 
   function toggleMaximizeWindow(windowId, event) {
     event.stopPropagation();
+    const z = nextZ(windows);
+    const next = windows.find((item) => item.id === windowId);
+    const maximized = !next?.maximized;
     setWindows((current) => current.map((item) => (
       item.id === windowId
-        ? { ...item, minimized: false, maximized: !item.maximized, z: nextZ(current) }
+        ? { ...item, minimized: false, maximized, z }
         : item
     )));
     setActiveWindowId(windowId);
+    persistWindowPlacement(windowId, { minimized: false, maximized, z });
   }
 
   function openDesktopEntry(entry) {
@@ -254,15 +281,17 @@ function App() {
     bringWindowToFront(item.id);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const origin = { ...item.rect };
+    let latestRect = origin;
     const startX = event.clientX;
     const startY = event.clientY;
     function onMove(move) {
+      latestRect = clampWindowRect({
+        ...origin,
+        x: origin.x + move.clientX - startX,
+        y: origin.y + move.clientY - startY,
+      });
       updateWindow(item.id, {
-        rect: clampWindowRect({
-          ...origin,
-          x: origin.x + move.clientX - startX,
-          y: origin.y + move.clientY - startY,
-        }),
+        rect: latestRect,
       });
     }
     function onUp() {
@@ -270,6 +299,7 @@ function App() {
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
       event.currentTarget.releasePointerCapture?.(event.pointerId);
+      persistWindowPlacement(item.id, { rect: latestRect });
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -285,11 +315,13 @@ function App() {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setResizingWindowId(item.id);
     const origin = { ...item.rect };
+    let latestRect = origin;
     const startX = event.clientX;
     const startY = event.clientY;
     function onMove(move) {
+      latestRect = resizeWindowRect(origin, move.clientX - startX, move.clientY - startY, edges);
       updateWindow(item.id, {
-        rect: resizeWindowRect(origin, move.clientX - startX, move.clientY - startY, edges),
+        rect: latestRect,
       });
     }
     function onUp() {
@@ -298,23 +330,29 @@ function App() {
       window.removeEventListener('pointercancel', onUp);
       event.currentTarget.releasePointerCapture?.(event.pointerId);
       setResizingWindowId('');
+      persistWindowPlacement(item.id, { rect: latestRect });
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   }
 
-  function updateWindow(windowId, patch) {
+  function updateWindow(windowId, patch, persist = false) {
     setWindows((current) => current.map((item) => (
       item.id === windowId ? { ...item, ...patch } : item
     )));
+    if (persist) {
+      persistWindowPlacement(windowId, patch);
+    }
   }
 
   function bringWindowToFront(windowId) {
+    const z = nextZ(windows);
     setWindows((current) => current.map((item) => (
-      item.id === windowId ? { ...item, z: nextZ(current), minimized: false } : item
+      item.id === windowId ? { ...item, z, minimized: false } : item
     )));
     setActiveWindowId(windowId);
+    persistWindowPlacement(windowId, { z, minimized: false });
   }
 
   const minimizedWindows = windows.filter((item) => item.minimized);
@@ -438,6 +476,11 @@ function normalizeApps(items) {
   })).filter((item) => item.id);
 }
 
+function normalizeWindows(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item, index) => windowFromSnapshot(item, index)).filter((item) => item.id);
+}
+
 function updateAppMeta(apps, meta, state) {
   if (!meta.id) return apps;
   if (apps.some((item) => item.id === meta.id)) {
@@ -486,18 +529,34 @@ function ContextMenu({ menu, onClose }) {
 
 function windowFromDetail(detail = {}, index = 0) {
   const id = windowIdFromDetail(detail);
+  const placement = normalizeWindowPlacement(detail.placement, index);
   return {
     id,
     appMeta: appMetaFromWindow(detail),
     url: windowURL(detail),
-    rect: defaultWindowRect(index),
-    maximized: false,
-    minimized: false,
-    z: 10 + index,
+    rect: placement.rect,
+    maximized: placement.maximized,
+    minimized: placement.minimized,
+    z: placement.z,
+  };
+}
+
+function windowFromSnapshot(snapshot = {}, index = 0) {
+  const id = windowIdFromDetail(snapshot);
+  const placement = normalizeWindowPlacement(snapshot.placement, index);
+  return {
+    id,
+    appMeta: appMetaFromWindow(snapshot),
+    url: windowURL(snapshot),
+    rect: placement.rect,
+    maximized: placement.maximized,
+    minimized: placement.minimized,
+    z: placement.z,
   };
 }
 
 function windowIdFromDetail(detail = {}) {
+  if (detail.id) return detail.id;
   return [detail.appId || 'app', detail.host || '127.0.0.1', detail.port || '0', detail.path || '/'].join(':');
 }
 
@@ -515,6 +574,52 @@ function upsertWindow(windows, nextWindow) {
 
 function nextZ(windows) {
   return Math.max(9, ...windows.map((item) => item.z || 0)) + 1;
+}
+
+function normalizeWindowPlacement(placement = {}, index = 0) {
+  return {
+    rect: placementRect(placement.rect, index),
+    maximized: Boolean(placement.maximized),
+    minimized: Boolean(placement.minimized),
+    z: Number.isFinite(placement.z) && placement.z > 0 ? placement.z : 10 + index,
+  };
+}
+
+function placementRect(rect, index) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return defaultWindowRect(index);
+  }
+  return clampWindowRect({
+    x: Number(rect.x) || 0,
+    y: Number(rect.y) || 0,
+    width: Number(rect.width) || 0,
+    height: Number(rect.height) || 0,
+  });
+}
+
+function persistWindowPlacement(windowId, patch) {
+  if (!windowId) return;
+  fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(windowPlacementPatch(patch)),
+  }).catch(() => {});
+}
+
+function forgetWindow(windowId) {
+  if (!windowId) return;
+  fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
+    method: 'DELETE',
+  }).catch(() => {});
+}
+
+function windowPlacementPatch(patch = {}) {
+  const out = {};
+  if (patch.rect) out.rect = patch.rect;
+  if (typeof patch.maximized === 'boolean') out.maximized = patch.maximized;
+  if (typeof patch.minimized === 'boolean') out.minimized = patch.minimized;
+  if (Number.isFinite(patch.z)) out.z = patch.z;
+  return out;
 }
 
 function FileIcon({ entry }) {

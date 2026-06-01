@@ -78,3 +78,49 @@ func TestCloseWindowPublishesEvent(t *testing.T) {
 		t.Fatal("timed out waiting for wm event")
 	}
 }
+
+func TestWindowSnapshotsTrackOpenUpdateAndClose(t *testing.T) {
+	manager := NewManager()
+	_, err := manager.OpenWindow(context.Background(), &OpenWindowRequest{
+		AppID: "topology",
+		Name:  "Topology Editor",
+		Title: "Topology editor",
+		Icon:  Icon{Type: "builtin", Value: "network"},
+		Host:  "127.0.0.1",
+		Port:  "49001",
+		Path:  "/?labPath=/tmp/demo.lab",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	windows := manager.Windows()
+	if len(windows) != 1 {
+		t.Fatalf("expected one window, got %d", len(windows))
+	}
+	id := WindowID("topology", "127.0.0.1", "49001", "/?labPath=/tmp/demo.lab")
+	if windows[0].ID != id || windows[0].Placement.Z == 0 {
+		t.Fatalf("unexpected snapshot: %+v", windows[0])
+	}
+
+	maximized := true
+	z := 42
+	updated, err := manager.UpdateWindow(id, WindowUpdate{
+		Rect:      &WindowRect{X: 12, Y: 34, Width: 800, Height: 600},
+		Maximized: &maximized,
+		Z:         &z,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Placement.Maximized || updated.Placement.Z != 42 || updated.Placement.Rect.Width != 800 {
+		t.Fatalf("unexpected updated snapshot: %+v", updated)
+	}
+
+	_, err = manager.ForgetWindow(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if windows := manager.Windows(); len(windows) != 0 {
+		t.Fatalf("expected no windows after forget, got %+v", windows)
+	}
+}

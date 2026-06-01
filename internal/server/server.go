@@ -111,6 +111,7 @@ func (s *Server) shellRoutes() {
 	s.mux.HandleFunc("/api/desktop", s.handleDesktop)
 	s.mux.HandleFunc("/api/files/open", s.handleOpenFile)
 	s.mux.HandleFunc("/api/wm/events", s.handleWMEvents)
+	s.mux.HandleFunc("/api/wm/windows", s.handleWMWindows)
 	s.mux.HandleFunc("/", s.handleShellStatic)
 }
 
@@ -151,6 +152,53 @@ func (s *Server) handleWMEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 		flusher.Flush()
+	}
+}
+
+func (s *Server) handleWMWindows(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/wm/windows" || s.wm == nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		windows := s.wm.Windows()
+		sort.Slice(windows, func(i, j int) bool {
+			return windows[i].Placement.Z < windows[j].Placement.Z
+		})
+		writeJSON(w, windows)
+	case http.MethodPatch:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			writeError(w, fmt.Errorf("missing window id"), http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+		var update wm.WindowUpdate
+		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+			writeError(w, err, http.StatusBadRequest)
+			return
+		}
+		window, err := s.wm.UpdateWindow(id, update)
+		if err != nil {
+			writeError(w, err, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, window)
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			writeError(w, fmt.Errorf("missing window id"), http.StatusBadRequest)
+			return
+		}
+		window, err := s.wm.ForgetWindow(id)
+		if err != nil {
+			writeError(w, err, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, window)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 

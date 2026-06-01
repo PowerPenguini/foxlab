@@ -308,6 +308,44 @@ func TestCloseManagedWindowPublishesWMCloseEvent(t *testing.T) {
 	}
 }
 
+func TestShellWMWindowsEndpointPersistsLayout(t *testing.T) {
+	manager := wm.NewManager()
+	shellServer := &Server{wm: manager, mux: http.NewServeMux()}
+	shellServer.shellRoutes()
+	shell := &http.Server{Handler: shellServer.mux}
+
+	_, err := manager.OpenWindow(context.Background(), &wm.OpenWindowRequest{
+		AppID: "topology",
+		Name:  "Topology Editor",
+		Title: "Topology editor",
+		Icon:  wm.Icon{Type: "builtin", Value: "network"},
+		Host:  "127.0.0.1",
+		Port:  "49001",
+		Path:  "/?labPath=/tmp/demo.lab",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := wm.WindowID("topology", "127.0.0.1", "49001", "/?labPath=/tmp/demo.lab")
+	assertBodyContains(t, shell, http.MethodGet, "/api/wm/windows", `"id":"`+id+`"`)
+
+	maximized := true
+	z := 33
+	rec := requestJSON(t, shell, http.MethodPatch, "/api/wm/windows?id="+url.QueryEscape(id), wm.WindowUpdate{
+		Rect:      &wm.WindowRect{X: 20, Y: 30, Width: 900, Height: 640},
+		Maximized: &maximized,
+		Z:         &z,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/wm/windows returned %d: %s", rec.Code, rec.Body.String())
+	}
+	assertBodyContains(t, shell, http.MethodGet, "/api/wm/windows", `"width":900`)
+	assertBodyContains(t, shell, http.MethodGet, "/api/wm/windows", `"maximized":true`)
+
+	assertStatus(t, shell, http.MethodDelete, "/api/wm/windows?id="+url.QueryEscape(id), http.StatusOK)
+	assertBodyMissing(t, shell, http.MethodGet, "/api/wm/windows", id)
+}
+
 func TestTopologyKeepsConsoleProxyOutOfTopologyApp(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()

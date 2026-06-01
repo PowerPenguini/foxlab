@@ -45,19 +45,54 @@ type CloseWindowResponse struct {
 }
 
 type WindowEvent struct {
-	Type  string `json:"type"`
-	AppID string `json:"appId"`
-	Name  string `json:"name"`
-	Title string `json:"title"`
-	Icon  Icon   `json:"icon"`
-	Host  string `json:"host"`
-	Port  string `json:"port"`
-	Path  string `json:"path"`
+	Type      string       `json:"type"`
+	ID        string       `json:"id"`
+	AppID     string       `json:"appId"`
+	Name      string       `json:"name"`
+	Title     string       `json:"title"`
+	Icon      Icon         `json:"icon"`
+	Host      string       `json:"host"`
+	Port      string       `json:"port"`
+	Path      string       `json:"path"`
+	Placement WindowLayout `json:"placement"`
 }
 
 type Icon struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+}
+
+type WindowLayout struct {
+	Rect      WindowRect `json:"rect"`
+	Maximized bool       `json:"maximized"`
+	Minimized bool       `json:"minimized"`
+	Z         int        `json:"z"`
+}
+
+type WindowRect struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
+type WindowUpdate struct {
+	Rect      *WindowRect `json:"rect,omitempty"`
+	Maximized *bool       `json:"maximized,omitempty"`
+	Minimized *bool       `json:"minimized,omitempty"`
+	Z         *int        `json:"z,omitempty"`
+}
+
+type WindowSnapshot struct {
+	ID        string       `json:"id"`
+	AppID     string       `json:"appId"`
+	Name      string       `json:"name"`
+	Title     string       `json:"title"`
+	Icon      Icon         `json:"icon"`
+	Host      string       `json:"host"`
+	Port      string       `json:"port"`
+	Path      string       `json:"path"`
+	Placement WindowLayout `json:"placement"`
 }
 
 type Manager struct {
@@ -66,10 +101,12 @@ type Manager struct {
 	server      *grpc.Server
 	listener    net.Listener
 	subscribers map[chan WindowEvent]struct{}
+	windows     map[string]WindowSnapshot
+	nextZ       int
 }
 
 func NewManager() *Manager {
-	return &Manager{subscribers: make(map[chan WindowEvent]struct{})}
+	return &Manager{subscribers: make(map[chan WindowEvent]struct{}), windows: make(map[string]WindowSnapshot), nextZ: 10}
 }
 
 func (m *Manager) Start() (string, error) {
@@ -146,8 +183,10 @@ func (m *Manager) OpenWindow(ctx context.Context, req *OpenWindowRequest) (*Open
 	if _, err := url.ParseRequestURI(path); err != nil {
 		return nil, fmt.Errorf("invalid window path: %w", err)
 	}
-	m.publish(WindowEvent{
-		Type:  "open-window",
+	id := WindowID(req.AppID, req.Host, req.Port, path)
+	m.mu.Lock()
+	snapshot := WindowSnapshot{
+		ID:    id,
 		AppID: req.AppID,
 		Name:  req.Name,
 		Title: req.Title,
@@ -155,6 +194,29 @@ func (m *Manager) OpenWindow(ctx context.Context, req *OpenWindowRequest) (*Open
 		Host:  req.Host,
 		Port:  req.Port,
 		Path:  path,
+		Placement: WindowLayout{
+			Z: m.nextZ,
+		},
+	}
+	if previous, ok := m.windows[id]; ok {
+		snapshot.Placement = previous.Placement
+		snapshot.Placement.Minimized = false
+		snapshot.Placement.Z = m.nextZ
+	}
+	m.nextZ++
+	m.windows[id] = snapshot
+	m.mu.Unlock()
+	m.publish(WindowEvent{
+		Type:      "open-window",
+		ID:        id,
+		AppID:     snapshot.AppID,
+		Name:      snapshot.Name,
+		Title:     snapshot.Title,
+		Icon:      snapshot.Icon,
+		Host:      snapshot.Host,
+		Port:      snapshot.Port,
+		Path:      snapshot.Path,
+		Placement: snapshot.Placement,
 	})
 	return &OpenWindowResponse{Accepted: true}, nil
 }
@@ -176,14 +238,82 @@ func (m *Manager) CloseWindow(ctx context.Context, req *CloseWindowRequest) (*Cl
 	if _, err := url.ParseRequestURI(path); err != nil {
 		return nil, fmt.Errorf("invalid window path: %w", err)
 	}
+	id := WindowID(req.AppID, req.Host, req.Port, path)
+	m.mu.Lock()
+	delete(m.windows, id)
+	m.mu.Unlock()
 	m.publish(WindowEvent{
 		Type:  "close-window",
+		ID:    id,
 		AppID: req.AppID,
 		Host:  req.Host,
 		Port:  req.Port,
 		Path:  path,
 	})
 	return &CloseWindowResponse{Accepted: true}, nil
+}
+
+func (m *Manager) Windows() []WindowSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	items := make([]WindowSnapshot, 0, len(m.windows))
+	for _, item := range m.windows {
+		items = append(items, item)
+	}
+	return items
+}
+
+func (m *Manager) UpdateWindow(id string, update WindowUpdate) (WindowSnapshot, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snapshot, ok := m.windows[id]
+	if !ok {
+		return WindowSnapshot{}, fmt.Errorf("unknown window %q", id)
+	}
+	if update.Rect != nil {
+		snapshot.Placement.Rect = *update.Rect
+	}
+	if update.Maximized != nil {
+		snapshot.Placement.Maximized = *update.Maximized
+	}
+	if update.Minimized != nil {
+		snapshot.Placement.Minimized = *update.Minimized
+	}
+	if update.Z != nil {
+		snapshot.Placement.Z = *update.Z
+		if *update.Z >= m.nextZ {
+			m.nextZ = *update.Z + 1
+		}
+	}
+	m.windows[id] = snapshot
+	return snapshot, nil
+}
+
+func (m *Manager) ForgetWindow(id string) (WindowSnapshot, error) {
+	m.mu.Lock()
+	snapshot, ok := m.windows[id]
+	if !ok {
+		m.mu.Unlock()
+		return WindowSnapshot{}, fmt.Errorf("unknown window %q", id)
+	}
+	delete(m.windows, id)
+	m.mu.Unlock()
+	m.publish(WindowEvent{
+		Type:  "close-window",
+		ID:    snapshot.ID,
+		AppID: snapshot.AppID,
+		Host:  snapshot.Host,
+		Port:  snapshot.Port,
+		Path:  snapshot.Path,
+	})
+	return snapshot, nil
+}
+
+func WindowID(appID, host, port, path string) string {
+	if path == "" {
+		path = "/"
+	}
+	return appID + ":" + host + ":" + port + ":" + path
 }
 
 func (m *Manager) publish(event WindowEvent) {
