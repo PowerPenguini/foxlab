@@ -1,6 +1,6 @@
 # Foxlab
 
-Foxlab is a declarative local virtual lab builder for libvirt/KVM. Labs are YAML files, and the same files are used by the CLI and the browser UI.
+Foxlab is a declarative local virtual lab builder for libvirt/KVM. Labs are `.lab` files with YAML content, and the same files are used by the CLI and the browser UI.
 
 ## Commands
 

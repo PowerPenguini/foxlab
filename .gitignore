@@ -25,7 +25,7 @@ modules.order
 
 # Local lab runtime state
 /labs/
-/lab-1.yaml
+/lab-1.lab
 *.qcow2
 *.img
 *.iso

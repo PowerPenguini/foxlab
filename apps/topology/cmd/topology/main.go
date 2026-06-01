@@ -21,7 +21,7 @@ const defaultLibvirtURI = "qemu:///system"
 func main() {
 	fs := flag.NewFlagSet("topology", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8090", "HTTP listen address")
-	workspace := fs.String("workspace", ".", "directory containing lab YAML files")
+	workspace := fs.String("workspace", ".", "directory containing .lab files")
 	uri := fs.String("uri", defaultLibvirtURI, "libvirt URI")
 	wmAddr := fs.String("wm-addr", "", "window manager gRPC address")
 	wmAppID := fs.String("wm-app-id", "topology", "window manager app id")

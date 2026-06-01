@@ -170,7 +170,7 @@ func TestShellOpenFileMatchUsesDirectoryAndFallbackHandlers(t *testing.T) {
 func TestTopologyLabDocumentEndpointPersistsDeclarativeConfig(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "demo.yaml"), `id: demo
+	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
 name: Demo
 `)
 	topology := NewTopology(Config{Workspace: workspace})
@@ -215,7 +215,7 @@ name: Demo
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT lab returned %d: %s", rec.Code, rec.Body.String())
 	}
-	loaded, err := lab.LoadFile(filepath.Join(workspace, "demo.yaml"))
+	loaded, err := lab.LoadFile(filepath.Join(workspace, "demo.lab"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestTopologyLabDocumentEndpointCreatesLabFiles(t *testing.T) {
 func TestTopologyConfigSubresourceEndpointsAreNotExposed(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "demo.yaml"), `id: demo
+	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
 name: Demo
 vms:
   - id: vm1
@@ -271,7 +271,7 @@ disks:
 	assertStatus(t, topology, http.MethodDelete, "/api/labs/demo/switches/sw1", http.StatusNotFound)
 	assertStatus(t, topology, http.MethodPost, "/api/labs/demo/disks", http.StatusNotFound)
 	assertStatus(t, topology, http.MethodDelete, "/api/labs/demo/disks/vm1", http.StatusNotFound)
-	loaded, err := lab.LoadFile(filepath.Join(workspace, "demo.yaml"))
+	loaded, err := lab.LoadFile(filepath.Join(workspace, "demo.lab"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestCloseManagedWindowPublishesWMCloseEvent(t *testing.T) {
 func TestTopologyKeepsConsoleProxyOutOfTopologyApp(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "demo.yaml"), `id: demo
+	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
 name: Demo
 vms:
   - id: vm1

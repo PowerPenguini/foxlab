@@ -159,12 +159,7 @@ func ListFiles(workspace string) ([]string, error) {
 }
 
 func isLabFile(path string) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case FileExtension, ".yaml", ".yml":
-		return true
-	default:
-		return false
-	}
+	return strings.ToLower(filepath.Ext(path)) == FileExtension
 }
 
 func (l *Lab) Normalize() {

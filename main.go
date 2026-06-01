@@ -173,7 +173,7 @@ func runStatus(args []string) {
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8088", "HTTP listen address")
-	workspace := fs.String("workspace", ".", "directory containing lab YAML files")
+	workspace := fs.String("workspace", ".", "directory containing .lab files")
 	uri := fs.String("uri", defaultDesktopLibvirtURI, "libvirt URI")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: foxlab serve [--addr 127.0.0.1:8088] [--workspace .] [--uri qemu:///system]")
@@ -280,7 +280,7 @@ func runAppRun(args []string) {
 	packagePath := args[0]
 	fs := flag.NewFlagSet("app run", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8090", "HTTP listen address")
-	workspace := fs.String("workspace", ".", "directory containing lab YAML files")
+	workspace := fs.String("workspace", ".", "directory containing .lab files")
 	uri := fs.String("uri", defaultDesktopLibvirtURI, "libvirt URI")
 	wmAddr := fs.String("wm-addr", "", "window manager gRPC address")
 	fs.Usage = func() {

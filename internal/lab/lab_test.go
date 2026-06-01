@@ -200,14 +200,14 @@ func TestManagedNamesAreStable(t *testing.T) {
 
 func TestLoadFileKnownFields(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "bad.yaml")
+	path := filepath.Join(dir, "bad.lab")
 	writeTestFile(t, path, "id: demo\nunknown: true\n")
 	if _, err := LoadFile(path); err == nil {
 		t.Fatal("expected known-fields validation error")
 	}
 }
 
-func TestListFilesIncludesLabExtensionAndLegacyYAML(t *testing.T) {
+func TestListFilesIncludesOnlyLabExtension(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, filepath.Join(dir, "demo.lab"), "id: demo\n")
 	writeTestFile(t, filepath.Join(dir, "legacy.yaml"), "id: legacy\n")
@@ -222,13 +222,13 @@ func TestListFilesIncludesLabExtensionAndLegacyYAML(t *testing.T) {
 	for _, path := range files {
 		got[filepath.Base(path)] = true
 	}
-	for _, want := range []string{"demo.lab", "legacy.yaml", "old.yml"} {
-		if !got[want] {
-			t.Fatalf("ListFiles missing %s in %#v", want, files)
-		}
+	if !got["demo.lab"] {
+		t.Fatalf("ListFiles missing demo.lab in %#v", files)
 	}
-	if got["notes.txt"] {
-		t.Fatalf("ListFiles included non-lab file: %#v", files)
+	for _, unwanted := range []string{"legacy.yaml", "old.yml", "notes.txt"} {
+		if got[unwanted] {
+			t.Fatalf("ListFiles included non-lab file %s: %#v", unwanted, files)
+		}
 	}
 }
 
