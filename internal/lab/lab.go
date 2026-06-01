@@ -11,7 +11,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const ManagedPrefix = "foxlab"
+const (
+	ManagedPrefix = "foxlab"
+	FileExtension = ".lab"
+)
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
@@ -147,13 +150,21 @@ func ListFiles(workspace string) ([]string, error) {
 			}
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".yaml" || ext == ".yml" {
+		if isLabFile(path) {
 			out = append(out, path)
 		}
 		return nil
 	})
 	return out, err
+}
+
+func isLabFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case FileExtension, ".yaml", ".yml":
+		return true
+	default:
+		return false
+	}
 }
 
 func (l *Lab) Normalize() {

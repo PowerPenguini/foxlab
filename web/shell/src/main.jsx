@@ -170,6 +170,10 @@ function App() {
       openInFiles(entry.path);
       return;
     }
+    if (isLabFile(entry.name)) {
+      openInTopology(entry.path);
+      return;
+    }
     openInFiles(parentPath(entry.path));
   }
 
@@ -187,6 +191,16 @@ function App() {
       return;
     }
     openApp(filesApp, { wmPath: `/?path=${encodeURIComponent(path || '/')}` });
+  }
+
+  function openInTopology(labPath) {
+    const topologyApp = apps.find((item) => item.id === 'topology') || apps.find((item) => item.name?.toLowerCase().includes('topology'));
+    if (!topologyApp) {
+      setAppState('missing');
+      setMessage('topology editor is not available');
+      return;
+    }
+    openApp(topologyApp, { wmPath: `/?labPath=${encodeURIComponent(labPath)}` });
   }
 
   function startWindowDrag(event, item) {
@@ -439,6 +453,17 @@ function FileIcon({ entry }) {
       </span>
     );
   }
+  if (isLabFile(entry.name)) {
+    return (
+      <span className="desktop-icon-art desktop-icon-lab" aria-hidden="true">
+        <span className="lab-node lab-node-top" />
+        <span className="lab-node lab-node-left" />
+        <span className="lab-node lab-node-right" />
+        <span className="lab-link lab-link-left" />
+        <span className="lab-link lab-link-right" />
+      </span>
+    );
+  }
   if (isDiskImage(entry.name)) {
     return (
       <span className="desktop-icon-art desktop-icon-disk" aria-hidden="true">
@@ -489,6 +514,10 @@ function parentPath(path) {
 
 function isDiskImage(name) {
   return /\.(qcow2?|img|raw|vmdk)$/i.test(name || '');
+}
+
+function isLabFile(name) {
+  return /\.lab$/i.test(name || '');
 }
 
 function windowURL(detail) {

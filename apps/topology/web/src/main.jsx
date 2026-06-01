@@ -19,7 +19,7 @@ const routeLaneGap = 16;
 
 function App() {
   const [labs, setLabs] = useState([]);
-  const [activeId, setActiveId] = useState('');
+  const [activeId, setActiveId] = useState(() => initialLabID());
   const [lab, setLab] = useState(blankLab);
   const [isos, setISOs] = useState([]);
   const [networkInterfaces, setNetworkInterfaces] = useState([]);
@@ -30,6 +30,7 @@ function App() {
   const [commandMode, setCommandMode] = useState(false);
   const [commandText, setCommandText] = useState('');
   const commandInputRef = useRef(null);
+  const initialLabPathRef = useRef(initialLabPath());
 
   function showMessage(text, kind = 'info') {
     setMessage(text);
@@ -80,6 +81,15 @@ function App() {
       const data = await apiJSON('/api/labs');
       const nextLabs = Array.isArray(data) ? data : [];
       setLabs(nextLabs);
+      if (initialLabPathRef.current) {
+        const requested = initialLabPathRef.current;
+        const matched = nextLabs.find((item) => item.path === requested);
+        if (matched) {
+          initialLabPathRef.current = '';
+          setActiveId(matched.id);
+          return;
+        }
+      }
       if (!activeId && nextLabs.length > 0) {
         setActiveId(nextLabs[0].id);
       }
@@ -1414,3 +1424,11 @@ async function apiJSON(url, options) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+
+function initialLabID() {
+  return new URLSearchParams(window.location.search).get('lab') || '';
+}
+
+function initialLabPath() {
+  return new URLSearchParams(window.location.search).get('labPath') || '';
+}

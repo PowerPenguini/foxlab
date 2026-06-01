@@ -384,7 +384,9 @@ input:-webkit-autofill:focus {
 .desktop-icon-file .file-line,
 .desktop-icon-disk .disk-platter,
 .desktop-icon-disk .disk-line,
-.desktop-icon-disk .disk-dot {
+.desktop-icon-disk .disk-dot,
+.desktop-icon-lab .lab-node,
+.desktop-icon-lab .lab-link {
   position: absolute;
   display: block;
 }
@@ -448,6 +450,46 @@ input:-webkit-autofill:focus {
   width: 4px;
   height: 4px;
   background: #aeb5b0;
+}
+
+.desktop-icon-lab .lab-node {
+  width: 10px;
+  height: 8px;
+  border: 1px solid #aeb5b0;
+  background: #080909;
+  box-shadow: inset 0 0 0 1px #000;
+}
+
+.desktop-icon-lab .lab-node-top {
+  left: 15px;
+  top: 5px;
+}
+
+.desktop-icon-lab .lab-node-left {
+  left: 5px;
+  top: 23px;
+}
+
+.desktop-icon-lab .lab-node-right {
+  left: 25px;
+  top: 23px;
+}
+
+.desktop-icon-lab .lab-link {
+  top: 18px;
+  width: 15px;
+  height: 1px;
+  background: #777d79;
+}
+
+.desktop-icon-lab .lab-link-left {
+  left: 11px;
+  transform: rotate(53deg);
+}
+
+.desktop-icon-lab .lab-link-right {
+  left: 17px;
+  transform: rotate(-53deg);
 }
 
 .desktop-icon-edge,

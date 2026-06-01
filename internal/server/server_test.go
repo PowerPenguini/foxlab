@@ -156,6 +156,23 @@ name: Demo
 	assertBodyContains(t, topology, http.MethodGet, "/api/labs/demo", `"externalLinks"`)
 }
 
+func TestTopologyLabDocumentEndpointCreatesLabFiles(t *testing.T) {
+	chdirRepoRoot(t)
+	workspace := t.TempDir()
+	topology := NewTopology(Config{Workspace: workspace})
+
+	rec := requestJSON(t, topology, http.MethodPut, "/api/labs/demo", lab.Lab{ID: "demo", Name: "Demo"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT lab returned %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "demo.lab")); err != nil {
+		t.Fatalf("expected demo.lab to be created: %v", err)
+	}
+	if _, err := lab.LoadFile(filepath.Join(workspace, "demo.lab")); err != nil {
+		t.Fatalf("created .lab file should load: %v", err)
+	}
+}
+
 func TestTopologyConfigSubresourceEndpointsAreNotExposed(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()

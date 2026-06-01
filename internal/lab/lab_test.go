@@ -207,6 +207,31 @@ func TestLoadFileKnownFields(t *testing.T) {
 	}
 }
 
+func TestListFilesIncludesLabExtensionAndLegacyYAML(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "demo.lab"), "id: demo\n")
+	writeTestFile(t, filepath.Join(dir, "legacy.yaml"), "id: legacy\n")
+	writeTestFile(t, filepath.Join(dir, "old.yml"), "id: old\n")
+	writeTestFile(t, filepath.Join(dir, "notes.txt"), "id: notes\n")
+
+	files, err := ListFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, path := range files {
+		got[filepath.Base(path)] = true
+	}
+	for _, want := range []string{"demo.lab", "legacy.yaml", "old.yml"} {
+		if !got[want] {
+			t.Fatalf("ListFiles missing %s in %#v", want, files)
+		}
+	}
+	if got["notes.txt"] {
+		t.Fatalf("ListFiles included non-lab file: %#v", files)
+	}
+}
+
 func writeTestFile(t *testing.T, path, data string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {

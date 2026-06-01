@@ -390,7 +390,7 @@ func (s *Server) saveLabResponse(w http.ResponseWriter, r *http.Request, labID s
 			writeError(w, err, statusFor(err))
 			return
 		}
-		path = filepath.Join(s.cfg.Workspace, labID+".yaml")
+		path = filepath.Join(s.cfg.Workspace, labID+lab.FileExtension)
 	}
 	if err := lab.SaveFile(path, &incoming); err != nil {
 		writeError(w, err, http.StatusBadRequest)

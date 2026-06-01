@@ -55,7 +55,7 @@ func main() {
 func runValidate(args []string) {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: foxlab validate <lab.yaml>")
+		fmt.Fprintln(os.Stderr, "usage: foxlab validate <lab.lab>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -72,7 +72,7 @@ func runApply(args []string) {
 	fs := flag.NewFlagSet("apply", flag.ExitOnError)
 	uri := fs.String("uri", defaultLibvirtURI, "libvirt URI")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: foxlab apply [--uri qemu:///system] <lab.yaml>")
+		fmt.Fprintln(os.Stderr, "usage: foxlab apply [--uri qemu:///system] <lab.lab>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -105,7 +105,7 @@ func runDestroy(args []string) {
 	uri := fs.String("uri", defaultLibvirtURI, "libvirt URI")
 	deleteDisks := fs.Bool("delete-disks", false, "also delete Foxlab-managed disk files")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: foxlab destroy [--uri qemu:///system] [--delete-disks] <lab.yaml>")
+		fmt.Fprintln(os.Stderr, "usage: foxlab destroy [--uri qemu:///system] [--delete-disks] <lab.lab>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -138,7 +138,7 @@ func runStatus(args []string) {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 	uri := fs.String("uri", defaultLibvirtURI, "libvirt URI")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: foxlab status [--uri qemu:///system] <lab.yaml>")
+		fmt.Fprintln(os.Stderr, "usage: foxlab status [--uri qemu:///system] <lab.lab>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -353,10 +353,10 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `foxlab - declarative local virtual lab builder
 
 Commands:
-  validate <lab.yaml>       parse and validate a lab file
-  apply <lab.yaml>          create/update managed libvirt networks and VMs
-  destroy <lab.yaml>        stop and remove managed libvirt networks and VMs
-  status <lab.yaml>         show managed resource state
+  validate <lab.lab>        parse and validate a lab file
+  apply <lab.lab>           create/update managed libvirt networks and VMs
+  destroy <lab.lab>         stop and remove managed libvirt networks and VMs
+  status <lab.lab>          show managed resource state
   serve                     run the local desktop shell
   app package <dir>         build a .foxapp archive
   app inspect <app.foxapp>  print package metadata
