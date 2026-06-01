@@ -17,8 +17,7 @@ const routeGap = 32;
 const routeLaneGap = 16;
 
 function App() {
-  const [labs, setLabs] = useState([]);
-  const [activeId, setActiveId] = useState(() => initialLabID());
+  const [labPath] = useState(() => initialLabPath());
   const [lab, setLab] = useState(blankLab);
   const [isos, setISOs] = useState([]);
   const [networkInterfaces, setNetworkInterfaces] = useState([]);
@@ -29,7 +28,6 @@ function App() {
   const [commandMode, setCommandMode] = useState(false);
   const [commandText, setCommandText] = useState('');
   const commandInputRef = useRef(null);
-  const initialLabPathRef = useRef(initialLabPath());
 
   function showMessage(text, kind = 'info') {
     setMessage(text);
@@ -37,16 +35,10 @@ function App() {
   }
 
   useEffect(() => {
-    refreshLabs();
+    loadLabFile();
     refreshISOs();
     refreshNetworkInterfaces();
   }, []);
-
-  useEffect(() => {
-    if (activeId && labs.some((item) => item.id === activeId)) {
-      loadLab(activeId);
-    }
-  }, [activeId, labs]);
 
   useEffect(() => {
     if (commandMode) {
@@ -75,54 +67,34 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [commandMode, selected, lab]);
 
-  async function refreshLabs() {
-    try {
-      const data = await apiJSON('/api/labs');
-      const nextLabs = Array.isArray(data) ? data : [];
-      setLabs(nextLabs);
-      if (initialLabPathRef.current) {
-        const requested = initialLabPathRef.current;
-        const matched = nextLabs.find((item) => item.path === requested);
-        if (matched) {
-          initialLabPathRef.current = '';
-          setActiveId(matched.id);
-          return;
-        }
-      }
-      if (!activeId && nextLabs.length > 0) {
-        setActiveId(nextLabs[0].id);
-      }
-    } catch (err) {
-      showMessage(err.message, 'error');
+  async function loadLabFile() {
+    if (!labPath) {
+      showMessage('Open a .lab file from Files or the desktop', 'error');
+      return;
     }
-  }
-
-  async function loadLab(id) {
     try {
-      const data = await apiJSON(`/api/labs/${id}`);
+      const data = await apiJSON(labFileURL());
       setLab(normalizeLab(data));
       setSelected(null);
       showMessage('');
-      refreshStatus(id);
+      refreshStatus();
     } catch (err) {
       showMessage(err.message, 'error');
     }
   }
 
   async function saveLab(next = lab, options = {}) {
-    const target = ensureLabID(next, labs);
+    const target = ensureLabID(next, labPath);
     try {
-      const data = await apiJSON(`/api/labs/${target.id}`, {
+      const data = await apiJSON(labFileURL(), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(target),
       });
       setLab(normalizeLab(data));
-      setActiveId(data.id);
       if (!options.silent) {
         showMessage('Saved');
       }
-      refreshLabs();
       return normalizeLab(data);
     } catch (err) {
       showMessage(err.message, 'error');
@@ -139,12 +111,12 @@ function App() {
     }
     showMessage(`${action} started`);
     try {
-      const data = await apiJSON(`/api/labs/${target.id}/${action}`, { method: 'POST' });
+      const data = await apiJSON(labFileURL(action), { method: 'POST' });
       showMessage(data.status || `${action} done`);
-      refreshStatus(target.id);
+      refreshStatus();
     } catch (err) {
       showMessage(err.message, 'error');
-      refreshStatus(target.id);
+      refreshStatus();
     }
   }
 
@@ -166,10 +138,10 @@ function App() {
     }
   }
 
-  async function refreshStatus(id = lab.id) {
-    if (!id) return;
+  async function refreshStatus() {
+    if (!labPath) return;
     try {
-      const data = await apiJSON(`/api/labs/${id}/status`);
+      const data = await apiJSON(labFileURL('status'));
       setStatus(normalizeStatus(data));
     } catch (err) {
       setStatus(normalizeStatus(null));
@@ -178,12 +150,7 @@ function App() {
   }
 
   function newLab() {
-    const next = nextLabDraft(labs);
-    setLab(next);
-    setActiveId(next.id);
-    setSelected(null);
-    setStatus(normalizeStatus(null));
-    showMessage('New lab draft');
+    showMessage('Create a .lab file in Files, then open it here', 'error');
   }
 
   function openCommandMode() {
@@ -220,7 +187,7 @@ function App() {
     } else if (command === 'new-lab' || command === 'new') {
       newLab();
     } else if (command === 'status') {
-      await refreshStatus(lab.id);
+      await refreshStatus();
       showMessage('Status refreshed');
     } else {
       showMessage(`Not an editor command: ${command}`, 'error');
@@ -228,7 +195,7 @@ function App() {
   }
 
   async function addVM() {
-    const target = ensureLabID(lab, labs);
+    const target = ensureLabID(lab, labPath);
     const id = uniqueId('vm', (target.vms || []).map((vm) => vm.id));
     const vm = {
       id,
@@ -246,7 +213,6 @@ function App() {
       layout: putNode(target.layout, id, 120 + (target.vms || []).length * 40, 140 + (target.vms || []).length * 30),
     }, vm);
     setLab(next);
-    setActiveId(next.id);
     setSelected({ type: 'vm', id: vm.id });
     showMessage(`Drafted ${vm.id}`);
   }
@@ -358,7 +324,7 @@ function App() {
     if (selected.type === 'external') return (lab.externalLinks || []).find((link) => link.id === selected.id);
     return null;
   }, [selected, lab]);
-  const labFileLabel = labFileName(lab, labs);
+  const labFileLabel = labFileName(lab, labPath);
 
   return (
     <div className="app topology-root" onContextMenu={(event) => event.preventDefault()}>
@@ -393,7 +359,7 @@ function App() {
       </main>
 
       <aside className="inspector">
-        <Inspector lab={lab} setLab={setLab} selected={selected} object={selectedObject} status={status} isos={isos} networkInterfaces={networkInterfaces} />
+        <Inspector lab={lab} labPath={labPath} setLab={setLab} selected={selected} object={selectedObject} status={status} isos={isos} networkInterfaces={networkInterfaces} />
       </aside>
     </div>
   );
@@ -640,7 +606,7 @@ function Node({ id, label, type, state, point, active, setSelected, moveNode, on
   );
 }
 
-function Inspector({ lab, setLab, selected, object, status, isos, networkInterfaces }) {
+function Inspector({ lab, labPath, setLab, selected, object, status, isos, networkInterfaces }) {
   if (!object) {
     return (
       <div className="inspector-body empty">
@@ -663,7 +629,7 @@ function Inspector({ lab, setLab, selected, object, status, isos, networkInterfa
           <span className="check-mark" aria-hidden="true" />
           <span>Enable VNC</span>
         </label>
-        <ConsoleInfo lab={lab} vm={object} />
+        <ConsoleInfo labPath={labPath} vm={object} />
       </div>
     );
   }
@@ -723,7 +689,7 @@ function ResourceSection({ title, rows }) {
   );
 }
 
-function ConsoleInfo({ lab, vm }) {
+function ConsoleInfo({ labPath, vm }) {
   const [info, setInfo] = useState(null);
   const [state, setState] = useState('idle');
   async function openConsole(kind) {
@@ -731,7 +697,7 @@ function ConsoleInfo({ lab, vm }) {
     setInfo(null);
     const path = kind === 'shell' ? 'shell-console' : 'console';
     try {
-      const data = await apiJSON(`/api/labs/${lab.id}/vms/${vm.id}/${path}/open`, {
+      const data = await apiJSON(labFileURL(`vms/${encodeURIComponent(vm.id)}/${path}/open`, labPath), {
         method: 'POST',
       });
       setInfo(data);
@@ -1335,10 +1301,9 @@ function uniqueId(prefix, existing) {
   return `${prefix}${i}`;
 }
 
-function ensureLabID(lab, labs) {
+function ensureLabID(lab, labPath) {
   if (lab.id) return lab;
-  const id = uniqueId('lab-', (labs || []).map((item) => item.id));
-  return { ...lab, id };
+  return { ...lab, id: idFromLabPath(labPath) || 'lab-1' };
 }
 
 function cleanPath(path) {
@@ -1349,13 +1314,6 @@ function preferredISO(isos) {
   const items = Array.isArray(isos) ? isos : [];
   const alpine = items.find((iso) => iso.name?.toLowerCase().includes('alpine'));
   return alpine?.path || items[0]?.path || '';
-}
-
-function nextLabDraft(labs) {
-  const existing = new Set((labs || []).map((item) => item.id));
-  let i = 1;
-  while (existing.has(`lab-${i}`)) i += 1;
-  return normalizeLab({ id: `lab-${i}` });
 }
 
 function normalizeLab(data = {}) {
@@ -1370,13 +1328,21 @@ function normalizeLab(data = {}) {
   };
 }
 
-function labFileName(lab, labs) {
-  const listed = (labs || []).find((item) => item.id === lab.id);
-  return listed?.fileName || baseName(listed?.path) || (lab.id ? `${lab.id}.lab` : 'unsaved.lab');
+function labFileName(lab, labPath) {
+  return baseName(labPath) || (lab.id ? `${lab.id}.lab` : 'no-file.lab');
 }
 
 function baseName(path) {
   return String(path || '').split('/').filter(Boolean).pop() || '';
+}
+
+function idFromLabPath(path) {
+  return baseName(path).replace(/\.lab$/i, '');
+}
+
+function labFileURL(action = '', path = initialLabPath()) {
+  const suffix = action ? `/${action.replace(/^\/+/, '')}` : '';
+  return `/api/lab-file${suffix}?path=${encodeURIComponent(path)}`;
 }
 
 function normalizeStatus(data) {
@@ -1419,10 +1385,6 @@ async function apiJSON(url, options) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
-
-function initialLabID() {
-  return new URLSearchParams(window.location.search).get('lab') || '';
-}
 
 function initialLabPath() {
   return new URLSearchParams(window.location.search).get('labPath') || '';

@@ -44,7 +44,7 @@ func TestShellAndTopologyAppsExposeSeparateRoutes(t *testing.T) {
 	assertStatus(t, topology, http.MethodGet, "/", http.StatusOK)
 	assertBodyContains(t, topology, http.MethodGet, "/", "Topology Editor")
 	assertStatus(t, topology, http.MethodGet, "/healthz", http.StatusOK)
-	assertStatus(t, topology, http.MethodGet, "/api/labs", http.StatusOK)
+	assertStatus(t, topology, http.MethodGet, "/api/labs", http.StatusNotFound)
 	assertStatus(t, topology, http.MethodGet, "/api/apps/topology", http.StatusNotFound)
 }
 
@@ -209,7 +209,8 @@ func TestTopologyLabDocumentEndpointPersistsDeclarativeConfig(t *testing.T) {
 			}},
 		},
 	}
-	rec := requestJSON(t, topology, http.MethodPut, "/api/labs/demo", next)
+	labPath := filepath.Join(workspace, "demo.lab")
+	rec := requestJSON(t, topology, http.MethodPut, labFileURL(labPath), next)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT lab returned %d: %s", rec.Code, rec.Body.String())
 	}
@@ -223,27 +224,28 @@ func TestTopologyLabDocumentEndpointPersistsDeclarativeConfig(t *testing.T) {
 	if len(loaded.Layout.Nodes) != 3 || len(loaded.Layout.Links) != 2 {
 		t.Fatalf("lab layout was not persisted declaratively: %+v", loaded.Layout)
 	}
-	assertBodyContains(t, topology, http.MethodGet, "/api/labs/demo", `"iso":"/home/user/Downloads/alpine.iso"`)
-	assertBodyContains(t, topology, http.MethodGet, "/api/labs/demo", `"externalLinks"`)
+	assertBodyContains(t, topology, http.MethodGet, labFileURL(labPath), `"iso":"/home/user/Downloads/alpine.iso"`)
+	assertBodyContains(t, topology, http.MethodGet, labFileURL(labPath), `"externalLinks"`)
 }
 
-func TestTopologyLabDocumentEndpointCreatesLabFiles(t *testing.T) {
+func TestTopologyLabFileEndpointSavesExplicitPath(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
 	topology := NewTopology(Config{Workspace: workspace})
+	labPath := filepath.Join(workspace, "demo.lab")
 
-	rec := requestJSON(t, topology, http.MethodPut, "/api/labs/demo", lab.Lab{ID: "demo"})
+	rec := requestJSON(t, topology, http.MethodPut, labFileURL(labPath), lab.Lab{ID: "demo"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT lab returned %d: %s", rec.Code, rec.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(workspace, "demo.lab")); err != nil {
+	if _, err := os.Stat(labPath); err != nil {
 		t.Fatalf("expected demo.lab to be created: %v", err)
 	}
-	if _, err := lab.LoadFile(filepath.Join(workspace, "demo.lab")); err != nil {
+	if _, err := lab.LoadFile(labPath); err != nil {
 		t.Fatalf("created .lab file should load: %v", err)
 	}
-	assertBodyContains(t, topology, http.MethodGet, "/api/labs", `"fileName":"demo.lab"`)
-	assertBodyMissing(t, topology, http.MethodGet, "/api/labs/demo", `"name"`)
+	assertStatus(t, topology, http.MethodGet, "/api/labs", http.StatusNotFound)
+	assertBodyMissing(t, topology, http.MethodGet, labFileURL(labPath), `"name"`)
 }
 
 func TestTopologyConfigSubresourceEndpointsAreNotExposed(t *testing.T) {
@@ -668,6 +670,14 @@ func assertBodyMissing(t *testing.T, srv *http.Server, method, path, unwanted st
 	if strings.Contains(rec.Body.String(), unwanted) {
 		t.Fatalf("%s %s body unexpectedly contains %q:\n%s", method, path, unwanted, rec.Body.String())
 	}
+}
+
+func labFileURL(path string, action ...string) string {
+	suffix := ""
+	if len(action) > 0 && action[0] != "" {
+		suffix = "/" + strings.TrimLeft(action[0], "/")
+	}
+	return "/api/lab-file" + suffix + "?path=" + url.QueryEscape(path)
 }
 
 func chdirRepoRoot(t *testing.T) {

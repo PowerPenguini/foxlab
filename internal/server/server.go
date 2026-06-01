@@ -116,8 +116,8 @@ func (s *Server) shellRoutes() {
 
 func (s *Server) topologyRoutes() {
 	s.mux.HandleFunc("/healthz", s.handleHealth)
-	s.mux.HandleFunc("/api/labs", s.handleLabs)
-	s.mux.HandleFunc("/api/labs/", s.handleLab)
+	s.mux.HandleFunc("/api/lab-file", s.handleLabFile)
+	s.mux.HandleFunc("/api/lab-file/", s.handleLabFile)
 	s.mux.HandleFunc("/api/isos", s.handleISOs)
 	s.mux.HandleFunc("/api/network-interfaces", s.handleNetworkInterfaces)
 	s.mux.HandleFunc("/", s.handleTopologyStatic)
@@ -339,66 +339,34 @@ func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleLabs(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/api/labs" {
+func (s *Server) handleLabFile(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/lab-file" && !strings.HasPrefix(r.URL.Path, "/api/lab-file/") {
 		http.NotFound(w, r)
 		return
 	}
-	switch r.Method {
-	case http.MethodGet:
-		files, err := lab.ListFiles(s.cfg.Workspace)
-		if err != nil {
-			writeError(w, err, http.StatusInternalServerError)
-			return
-		}
-		type item struct {
-			ID       string `json:"id"`
-			FileName string `json:"fileName"`
-			Path     string `json:"path"`
-		}
-		var items []item
-		for _, path := range files {
-			loaded, err := lab.LoadFile(path)
-			if err != nil {
-				continue
-			}
-			items = append(items, item{ID: loaded.ID, FileName: filepath.Base(path), Path: path})
-		}
-		writeJSON(w, items)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
-}
-
-func (s *Server) handleLab(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/labs/"), "/")
-	if len(parts) == 0 || parts[0] == "" {
-		http.NotFound(w, r)
+	path, err := labFilePathFromRequest(r)
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	labID := parts[0]
-	action := ""
-	if len(parts) > 1 {
-		action = strings.Join(parts[1:], "/")
-	}
-
+	action := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/lab-file"), "/")
 	switch {
 	case action == "" && r.Method == http.MethodGet:
-		s.loadLabResponse(w, labID)
+		s.loadLabFileResponse(w, path)
 	case action == "" && r.Method == http.MethodPut:
-		s.saveLabResponse(w, r, labID)
+		s.saveLabFileResponse(w, r, path)
 	case action == "apply" && r.Method == http.MethodPost:
-		s.applyLabResponse(w, labID)
+		s.applyLabFileResponse(w, path)
 	case action == "destroy" && r.Method == http.MethodPost:
-		s.destroyLabResponse(w, labID)
+		s.destroyLabFileResponse(w, path)
 	case action == "status" && r.Method == http.MethodGet:
-		s.statusLabResponse(w, labID)
+		s.statusLabFileResponse(w, path)
 	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/console/open") && r.Method == http.MethodPost:
 		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/console/open")
-		s.openConsoleResponse(w, labID, vmID)
+		s.openConsoleFileResponse(w, path, vmID)
 	case strings.HasPrefix(action, "vms/") && strings.HasSuffix(action, "/shell-console/open") && r.Method == http.MethodPost:
 		vmID := strings.TrimSuffix(strings.TrimPrefix(action, "vms/"), "/shell-console/open")
-		s.openShellConsoleResponse(w, labID, vmID)
+		s.openShellConsoleFileResponse(w, path, vmID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -438,8 +406,8 @@ func (s *Server) handleNetworkInterfaces(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, items)
 }
 
-func (s *Server) loadLabResponse(w http.ResponseWriter, labID string) {
-	loaded, err := s.findLab(labID)
+func (s *Server) loadLabFileResponse(w http.ResponseWriter, path string) {
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -447,27 +415,12 @@ func (s *Server) loadLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, loaded)
 }
 
-func (s *Server) saveLabResponse(w http.ResponseWriter, r *http.Request, labID string) {
+func (s *Server) saveLabFileResponse(w http.ResponseWriter, r *http.Request, path string) {
 	defer r.Body.Close()
 	var incoming lab.Lab
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 		writeError(w, err, http.StatusBadRequest)
 		return
-	}
-	if incoming.ID == "" {
-		incoming.ID = labID
-	}
-	if incoming.ID != labID {
-		writeError(w, fmt.Errorf("lab id in URL and body differ"), http.StatusBadRequest)
-		return
-	}
-	path, err := s.findLabPath(labID)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			writeError(w, err, statusFor(err))
-			return
-		}
-		path = filepath.Join(s.cfg.Workspace, labID+lab.FileExtension)
 	}
 	if err := lab.SaveFile(path, &incoming); err != nil {
 		writeError(w, err, http.StatusBadRequest)
@@ -481,8 +434,8 @@ func (s *Server) saveLabResponse(w http.ResponseWriter, r *http.Request, labID s
 	writeJSON(w, loaded)
 }
 
-func (s *Server) applyLabResponse(w http.ResponseWriter, labID string) {
-	loaded, err := s.findLab(labID)
+func (s *Server) applyLabFileResponse(w http.ResponseWriter, path string) {
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -506,8 +459,8 @@ func (s *Server) applyLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, map[string]string{"status": "applied"})
 }
 
-func (s *Server) destroyLabResponse(w http.ResponseWriter, labID string) {
-	loaded, err := s.findLab(labID)
+func (s *Server) destroyLabFileResponse(w http.ResponseWriter, path string) {
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -527,8 +480,8 @@ func (s *Server) destroyLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, map[string]string{"status": "destroyed"})
 }
 
-func (s *Server) statusLabResponse(w http.ResponseWriter, labID string) {
-	loaded, err := s.findLab(labID)
+func (s *Server) statusLabFileResponse(w http.ResponseWriter, path string) {
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -547,12 +500,12 @@ func (s *Server) statusLabResponse(w http.ResponseWriter, labID string) {
 	writeJSON(w, status)
 }
 
-func (s *Server) openShellConsoleResponse(w http.ResponseWriter, labID, vmID string) {
+func (s *Server) openShellConsoleFileResponse(w http.ResponseWriter, path, vmID string) {
 	if s.cfg.WMAddr == "" {
 		writeError(w, fmt.Errorf("wm grpc server is not available"), http.StatusInternalServerError)
 		return
 	}
-	loaded, err := s.findLab(labID)
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -570,12 +523,12 @@ func (s *Server) openShellConsoleResponse(w http.ResponseWriter, labID, vmID str
 	writeJSON(w, status)
 }
 
-func (s *Server) openConsoleResponse(w http.ResponseWriter, labID, vmID string) {
+func (s *Server) openConsoleFileResponse(w http.ResponseWriter, path, vmID string) {
 	if s.cfg.WMAddr == "" {
 		writeError(w, fmt.Errorf("wm grpc server is not available"), http.StatusInternalServerError)
 		return
 	}
-	loaded, err := s.findLab(labID)
+	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
 		return
@@ -808,28 +761,6 @@ func (s *Server) stopConsoleApps() {
 		}
 		closeManagedWindow(app.wmAddr, app.manifest, app.url)
 	}
-}
-
-func (s *Server) findLab(id string) (*lab.Lab, error) {
-	path, err := s.findLabPath(id)
-	if err != nil {
-		return nil, err
-	}
-	return lab.LoadFile(path)
-}
-
-func (s *Server) findLabPath(id string) (string, error) {
-	files, err := lab.ListFiles(s.cfg.Workspace)
-	if err != nil {
-		return "", err
-	}
-	for _, path := range files {
-		loaded, err := lab.LoadFile(path)
-		if err == nil && loaded.ID == id {
-			return path, nil
-		}
-	}
-	return "", os.ErrNotExist
 }
 
 type isoItem struct {
@@ -1098,6 +1029,17 @@ func renderOpenFilePath(template, path string) string {
 	out := strings.ReplaceAll(template, "{path}", url.QueryEscape(path))
 	out = strings.ReplaceAll(out, "{parent}", url.QueryEscape(parent))
 	return out
+}
+
+func labFilePathFromRequest(r *http.Request) (string, error) {
+	path, err := cleanOpenFilePath(r.URL.Query().Get("path"))
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(filepath.Ext(path), lab.FileExtension) {
+		return "", fmt.Errorf("path must point to a %s file", lab.FileExtension)
+	}
+	return path, nil
 }
 
 func (s *Server) handleShellStatic(w http.ResponseWriter, r *http.Request) {
