@@ -362,20 +362,6 @@ function App() {
 
   return (
     <div className="app topology-root">
-      <aside className="sidebar">
-        <div className="sidebar-body">
-          <button onClick={newLab}>new lab</button>
-          <div className="terminal-label">workspace</div>
-          <div className="lab-list">
-            {labs.map((item) => (
-              <button key={item.id} className={item.id === lab.id ? 'active' : ''} onClick={() => setActiveId(item.id)}>
-                {item.name || item.id}
-              </button>
-            ))}
-          </div>
-        </div>
-      </aside>
-
       <main className="workspace">
         <section className="stage">
           <header className="toolbar">
