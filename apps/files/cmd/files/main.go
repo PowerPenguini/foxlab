@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	libvirt "github.com/libvirt/libvirt-go"
@@ -1510,7 +1511,7 @@ func serveUntilInterrupted(srv *http.Server) {
 		errc <- srv.ListenAndServe()
 	}()
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigc)
 	select {
 	case err := <-errc:

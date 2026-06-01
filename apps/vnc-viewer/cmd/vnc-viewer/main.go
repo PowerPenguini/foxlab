@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"foxlab/internal/vncproxy"
@@ -174,7 +175,7 @@ func serveUntilInterrupted(srv *http.Server) {
 	}()
 
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigc)
 
 	select {

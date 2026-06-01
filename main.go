@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"foxlab/internal/disk"
@@ -197,7 +198,7 @@ func serveUntilInterrupted(srv *http.Server) {
 	}()
 
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigc)
 
 	select {
@@ -323,7 +324,7 @@ func waitForCommandOrInterrupt(cmd *exec.Cmd) {
 	}()
 
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigc)
 
 	select {
