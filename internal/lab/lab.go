@@ -20,7 +20,6 @@ var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
 type Lab struct {
 	ID            string            `json:"id" yaml:"id"`
-	Name          string            `json:"name,omitempty" yaml:"name,omitempty"`
 	VMs           []VM              `json:"vms,omitempty" yaml:"vms,omitempty"`
 	Switches      []Switch          `json:"switches,omitempty" yaml:"switches,omitempty"`
 	ExternalLinks []ExternalLink    `json:"externalLinks,omitempty" yaml:"externalLinks,omitempty"`
@@ -164,7 +163,6 @@ func isLabFile(path string) bool {
 
 func (l *Lab) Normalize() {
 	l.ID = strings.TrimSpace(l.ID)
-	l.Name = strings.TrimSpace(l.Name)
 	for i := range l.VMs {
 		l.VMs[i].ID = strings.TrimSpace(l.VMs[i].ID)
 		l.VMs[i].Name = strings.TrimSpace(l.VMs[i].Name)

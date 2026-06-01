@@ -171,13 +171,11 @@ func TestTopologyLabDocumentEndpointPersistsDeclarativeConfig(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
-name: Demo
 `)
 	topology := NewTopology(Config{Workspace: workspace})
 
 	next := lab.Lab{
-		ID:   "demo",
-		Name: "Demo declarative",
+		ID: "demo",
 		VMs: []lab.VM{{
 			ID:       "vm1",
 			Name:     "Alpine",
@@ -234,7 +232,7 @@ func TestTopologyLabDocumentEndpointCreatesLabFiles(t *testing.T) {
 	workspace := t.TempDir()
 	topology := NewTopology(Config{Workspace: workspace})
 
-	rec := requestJSON(t, topology, http.MethodPut, "/api/labs/demo", lab.Lab{ID: "demo", Name: "Demo"})
+	rec := requestJSON(t, topology, http.MethodPut, "/api/labs/demo", lab.Lab{ID: "demo"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT lab returned %d: %s", rec.Code, rec.Body.String())
 	}
@@ -244,13 +242,14 @@ func TestTopologyLabDocumentEndpointCreatesLabFiles(t *testing.T) {
 	if _, err := lab.LoadFile(filepath.Join(workspace, "demo.lab")); err != nil {
 		t.Fatalf("created .lab file should load: %v", err)
 	}
+	assertBodyContains(t, topology, http.MethodGet, "/api/labs", `"fileName":"demo.lab"`)
+	assertBodyMissing(t, topology, http.MethodGet, "/api/labs/demo", `"name"`)
 }
 
 func TestTopologyConfigSubresourceEndpointsAreNotExposed(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
-name: Demo
 vms:
   - id: vm1
     memoryMB: 1024
@@ -311,7 +310,6 @@ func TestTopologyKeepsConsoleProxyOutOfTopologyApp(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "demo.lab"), `id: demo
-name: Demo
 vms:
   - id: vm1
     memoryMB: 1024
@@ -659,6 +657,16 @@ func assertBodyContains(t *testing.T, srv *http.Server, method, path, want strin
 	srv.Handler.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), want) {
 		t.Fatalf("%s %s body missing %q:\n%s", method, path, want, rec.Body.String())
+	}
+}
+
+func assertBodyMissing(t *testing.T, srv *http.Server, method, path, unwanted string) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, nil)
+	srv.Handler.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), unwanted) {
+		t.Fatalf("%s %s body unexpectedly contains %q:\n%s", method, path, unwanted, rec.Body.String())
 	}
 }
 

@@ -207,6 +207,15 @@ func TestLoadFileKnownFields(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsTopLevelName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.lab")
+	writeTestFile(t, path, "id: demo\nname: Demo\n")
+	if _, err := LoadFile(path); err == nil {
+		t.Fatal("expected top-level name to be rejected")
+	}
+}
+
 func TestListFilesIncludesOnlyLabExtension(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, filepath.Join(dir, "demo.lab"), "id: demo\n")

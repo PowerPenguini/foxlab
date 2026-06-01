@@ -4,7 +4,6 @@ import './styles.css';
 
 const blankLab = {
   id: '',
-  name: '',
   vms: [],
   switches: [],
   externalLinks: [],
@@ -359,6 +358,7 @@ function App() {
     if (selected.type === 'external') return (lab.externalLinks || []).find((link) => link.id === selected.id);
     return null;
   }, [selected, lab]);
+  const labFileLabel = labFileName(lab, labs);
 
   return (
     <div className="app topology-root" onContextMenu={(event) => event.preventDefault()}>
@@ -366,8 +366,8 @@ function App() {
         <section className="stage">
           <header className="toolbar">
             <div className="command-line">
-              <span>lab.name=</span>
-              <input value={lab.name || ''} onChange={(e) => setLab({ ...lab, name: e.target.value })} />
+              <span>file=</span>
+              <strong>{labFileLabel}</strong>
             </div>
             <nav>
               <button onClick={addVM}>./mk-vm</button>
@@ -1338,7 +1338,7 @@ function uniqueId(prefix, existing) {
 function ensureLabID(lab, labs) {
   if (lab.id) return lab;
   const id = uniqueId('lab-', (labs || []).map((item) => item.id));
-  return { ...lab, id, name: lab.name || id };
+  return { ...lab, id };
 }
 
 function cleanPath(path) {
@@ -1355,7 +1355,7 @@ function nextLabDraft(labs) {
   const existing = new Set((labs || []).map((item) => item.id));
   let i = 1;
   while (existing.has(`lab-${i}`)) i += 1;
-  return normalizeLab({ id: `lab-${i}`, name: `Lab ${i}` });
+  return normalizeLab({ id: `lab-${i}` });
 }
 
 function normalizeLab(data = {}) {
@@ -1368,6 +1368,15 @@ function normalizeLab(data = {}) {
     disks: Array.isArray(data.disks) ? data.disks : [],
     layout: { nodes: data.layout?.nodes || {}, links: Array.isArray(data.layout?.links) ? data.layout.links : [] },
   };
+}
+
+function labFileName(lab, labs) {
+  const listed = (labs || []).find((item) => item.id === lab.id);
+  return listed?.fileName || baseName(listed?.path) || (lab.id ? `${lab.id}.lab` : 'unsaved.lab');
+}
+
+function baseName(path) {
+  return String(path || '').split('/').filter(Boolean).pop() || '';
 }
 
 function normalizeStatus(data) {

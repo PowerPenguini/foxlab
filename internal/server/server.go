@@ -352,9 +352,9 @@ func (s *Server) handleLabs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		type item struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-			Path string `json:"path"`
+			ID       string `json:"id"`
+			FileName string `json:"fileName"`
+			Path     string `json:"path"`
 		}
 		var items []item
 		for _, path := range files {
@@ -362,7 +362,7 @@ func (s *Server) handleLabs(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				continue
 			}
-			items = append(items, item{ID: loaded.ID, Name: loaded.Name, Path: path})
+			items = append(items, item{ID: loaded.ID, FileName: filepath.Base(path), Path: path})
 		}
 		writeJSON(w, items)
 	default:

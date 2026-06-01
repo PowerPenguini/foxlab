@@ -684,8 +684,10 @@ input:-webkit-autofill:focus {
   white-space: nowrap;
 }
 
-.command-line input {
+.command-line strong {
   color: var(--term-ink);
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .toolbar nav {
