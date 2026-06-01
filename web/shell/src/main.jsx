@@ -461,9 +461,12 @@ function FileIcon({ entry }) {
   if (isLabFile(entry.name)) {
     return (
       <span className="desktop-icon-art desktop-icon-lab" aria-hidden="true">
-        <span className="lab-node lab-node-top" />
+        <span className="lab-page" />
+        <span className="lab-fold" />
+        <span className="lab-switch" />
         <span className="lab-node lab-node-left" />
         <span className="lab-node lab-node-right" />
+        <span className="lab-link lab-link-trunk" />
         <span className="lab-link lab-link-left" />
         <span className="lab-link lab-link-right" />
       </span>
