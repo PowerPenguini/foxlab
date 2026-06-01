@@ -461,14 +461,11 @@ function FileIcon({ entry }) {
   if (isLabFile(entry.name)) {
     return (
       <span className="desktop-icon-art desktop-icon-lab" aria-hidden="true">
-        <span className="lab-page" />
-        <span className="lab-fold" />
-        <span className="lab-switch" />
-        <span className="lab-node lab-node-left" />
-        <span className="lab-node lab-node-right" />
-        <span className="lab-link lab-link-trunk" />
-        <span className="lab-link lab-link-left" />
-        <span className="lab-link lab-link-right" />
+        <svg className="lab-svg" viewBox="0 0 40 34" focusable="false">
+          <path className="lab-paper" d="M10.5 3.5H24.5L30.5 9.5V31.5H10.5Z" />
+          <path className="lab-fold" d="M24.5 3.5V9.5H30.5" />
+          <text className="lab-mark" x="20.5" y="21">LAB</text>
+        </svg>
       </span>
     );
   }

@@ -384,12 +384,7 @@ input:-webkit-autofill:focus {
 .desktop-icon-file .file-line,
 .desktop-icon-disk .disk-platter,
 .desktop-icon-disk .disk-line,
-.desktop-icon-disk .disk-dot,
-.desktop-icon-lab .lab-page,
-.desktop-icon-lab .lab-fold,
-.desktop-icon-lab .lab-switch,
-.desktop-icon-lab .lab-node,
-.desktop-icon-lab .lab-link {
+.desktop-icon-disk .disk-dot {
   position: absolute;
   display: block;
 }
@@ -455,78 +450,34 @@ input:-webkit-autofill:focus {
   background: #aeb5b0;
 }
 
-.desktop-icon-lab .lab-page {
-  left: 8px;
-  top: 3px;
-  width: 25px;
-  height: 30px;
-  border: 1px solid #aeb5b0;
-  background: #080909;
-  box-shadow: inset 0 0 0 1px #000;
+.desktop-icon-lab .lab-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  color: #aeb5b0;
+  shape-rendering: crispEdges;
+  text-rendering: geometricPrecision;
+}
+
+.desktop-icon-lab .lab-paper,
+.desktop-icon-lab .lab-fold {
+  fill: #080909;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .desktop-icon-lab .lab-fold {
-  right: 7px;
-  top: 3px;
-  width: 8px;
-  height: 8px;
-  border-left: 1px solid #aeb5b0;
-  border-bottom: 1px solid #aeb5b0;
-  background: #080909;
+  fill: none;
 }
 
-.desktop-icon-lab .lab-switch {
-  left: 17px;
-  top: 13px;
-  width: 7px;
-  height: 5px;
-  border: 1px solid #aeb5b0;
-  background: #080909;
-}
-
-.desktop-icon-lab .lab-node {
-  width: 5px;
-  height: 5px;
-  border: 1px solid #aeb5b0;
-  background: #080909;
-}
-
-.desktop-icon-lab .lab-node-left {
-  left: 13px;
-  top: 24px;
-}
-
-.desktop-icon-lab .lab-node-right {
-  left: 23px;
-  top: 24px;
-}
-
-.desktop-icon-lab .lab-link {
-  background: #777d79;
-}
-
-.desktop-icon-lab .lab-link-trunk {
-  left: 20px;
-  top: 18px;
-  width: 1px;
-  height: 6px;
-}
-
-.desktop-icon-lab .lab-link-left,
-.desktop-icon-lab .lab-link-right {
-  top: 23px;
-  width: 8px;
-  height: 1px;
-}
-
-.desktop-icon-lab .lab-link-left {
-  left: 14px;
-  transform: rotate(-26deg);
-}
-
-.desktop-icon-lab .lab-link-right {
-  left: 20px;
-  transform: rotate(26deg);
+.desktop-icon-lab .lab-mark {
+  fill: currentColor;
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", "DejaVu Sans Mono", monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-anchor: middle;
 }
 
 .desktop-icon-edge,
@@ -581,24 +532,30 @@ input:-webkit-autofill:focus {
 }
 
 .desktop-icon:focus .desktop-icon-node,
-.desktop-icon:focus-visible .desktop-icon-node,
-.desktop-icon:focus .desktop-icon-lab .lab-page,
-.desktop-icon:focus-visible .desktop-icon-lab .lab-page,
-.desktop-icon:focus .desktop-icon-lab .lab-fold,
-.desktop-icon:focus-visible .desktop-icon-lab .lab-fold,
-.desktop-icon:focus .desktop-icon-lab .lab-switch,
-.desktop-icon:focus-visible .desktop-icon-lab .lab-switch,
-.desktop-icon:focus .desktop-icon-lab .lab-node,
-.desktop-icon:focus-visible .desktop-icon-lab .lab-node {
+.desktop-icon:focus-visible .desktop-icon-node {
   border-color: #e2e5e2;
   background: #c7cbc8;
 }
 
 .desktop-icon:focus .desktop-icon-edge,
-.desktop-icon:focus-visible .desktop-icon-edge,
-.desktop-icon:focus .desktop-icon-lab .lab-link,
-.desktop-icon:focus-visible .desktop-icon-lab .lab-link {
+.desktop-icon:focus-visible .desktop-icon-edge {
   background: #e2e5e2;
+}
+
+.desktop-icon:focus .desktop-icon-lab .lab-paper,
+.desktop-icon:focus-visible .desktop-icon-lab .lab-paper {
+  fill: #c7cbc8;
+  stroke: #e2e5e2;
+}
+
+.desktop-icon:focus .desktop-icon-lab .lab-fold,
+.desktop-icon:focus-visible .desktop-icon-lab .lab-fold {
+  stroke: #080909;
+}
+
+.desktop-icon:focus .desktop-icon-lab .lab-mark,
+.desktop-icon:focus-visible .desktop-icon-lab .lab-mark {
+  fill: #080909;
 }
 
 .desktop-icon-label {
