@@ -14,15 +14,16 @@ const (
 )
 
 type Manifest struct {
-	Format  string      `json:"format"`
-	ID      string      `json:"id"`
-	Name    string      `json:"name"`
-	Version string      `json:"version"`
-	Run     CommandSpec `json:"run"`
-	Icon    IconSpec    `json:"icon"`
-	Window  WindowSpec  `json:"window"`
-	Health  HealthSpec  `json:"health"`
-	Web     WebSpec     `json:"web"`
+	Format   string            `json:"format"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Version  string            `json:"version"`
+	Run      CommandSpec       `json:"run"`
+	Icon     IconSpec          `json:"icon"`
+	Window   WindowSpec        `json:"window"`
+	Health   HealthSpec        `json:"health"`
+	Web      WebSpec           `json:"web"`
+	Handlers []FileHandlerSpec `json:"fileHandlers,omitempty"`
 }
 
 type CommandSpec struct {
@@ -46,6 +47,14 @@ type HealthSpec struct {
 
 type WebSpec struct {
 	Dist string `json:"dist"`
+}
+
+type FileHandlerSpec struct {
+	Kind       string   `json:"kind,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
+	Fallback   bool     `json:"fallback,omitempty"`
+	OpenPath   string   `json:"openPath"`
+	Priority   int      `json:"priority,omitempty"`
 }
 
 func LoadManifest(path string) (*Manifest, error) {
@@ -109,6 +118,22 @@ func (m *Manifest) Validate() error {
 	}
 	if filepath.IsAbs(m.Run.Command) || filepath.IsAbs(m.Web.Dist) {
 		return fmt.Errorf("package paths must be relative")
+	}
+	for _, handler := range m.Handlers {
+		if handler.OpenPath == "" {
+			return fmt.Errorf("file handler openPath is required")
+		}
+		if !strings.HasPrefix(handler.OpenPath, "/") {
+			return fmt.Errorf("file handler openPath must start with /")
+		}
+		if handler.Kind != "" && handler.Kind != "file" && handler.Kind != "directory" {
+			return fmt.Errorf("file handler kind %q is unsupported", handler.Kind)
+		}
+		for _, ext := range handler.Extensions {
+			if ext == "" || !strings.HasPrefix(ext, ".") {
+				return fmt.Errorf("file handler extensions must start with .")
+			}
+		}
 	}
 	return nil
 }

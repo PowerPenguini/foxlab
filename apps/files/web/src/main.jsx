@@ -117,9 +117,7 @@ function App() {
       openPath(entry.path);
       return;
     }
-    if (isDiskImage(entry.path)) {
-      mountImage(entry);
-    }
+    openFile(entry.path);
   }
 
   function goParent() {
@@ -283,6 +281,10 @@ function DetailPanel({ selected, preview, imageInfo, isImage, busy, mounts, onMo
       )}
     </aside>
   );
+}
+
+function openFile(path) {
+  window.parent?.postMessage({ type: 'foxlab:open-file', path }, '*');
 }
 
 async function apiJSON(url, options = {}) {

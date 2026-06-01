@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -108,6 +109,7 @@ func (s *Server) shellRoutes() {
 	s.mux.HandleFunc("/api/apps", s.handleApps)
 	s.mux.HandleFunc("/api/apps/", s.handleApp)
 	s.mux.HandleFunc("/api/desktop", s.handleDesktop)
+	s.mux.HandleFunc("/api/files/open", s.handleOpenFile)
 	s.mux.HandleFunc("/api/wm/events", s.handleWMEvents)
 	s.mux.HandleFunc("/", s.handleShellStatic)
 }
@@ -231,6 +233,31 @@ type desktopEntryItem struct {
 	Modified string `json:"modified"`
 }
 
+type openFileRequest struct {
+	Path string `json:"path"`
+}
+
+type openFileResponse struct {
+	Path       string                `json:"path"`
+	AppID      string                `json:"appID"`
+	WindowPath string                `json:"windowPath"`
+	Handler    openFileHandlerResult `json:"handler"`
+	Status     AppStatus             `json:"status"`
+}
+
+type openFileHandlerResult struct {
+	AppID      string   `json:"appID"`
+	Kind       string   `json:"kind,omitempty"`
+	Extensions []string `json:"extensions,omitempty"`
+	Fallback   bool     `json:"fallback,omitempty"`
+	Priority   int      `json:"priority,omitempty"`
+}
+
+type openFileMatch struct {
+	def     AppDefinition
+	handler foxapp.FileHandlerSpec
+}
+
 func (s *Server) handleDesktop(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/desktop" {
 		http.NotFound(w, r)
@@ -259,6 +286,56 @@ func (s *Server) handleDesktop(w http.ResponseWriter, r *http.Request) {
 		Path:    path,
 		Parent:  desktopParent(root, path),
 		Entries: entries,
+	})
+}
+
+func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/api/files/open" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req openFileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	path, err := cleanOpenFilePath(req.Path)
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		writeError(w, err, statusFor(err))
+		return
+	}
+	match, err := s.openFileMatch(path, info)
+	if err != nil {
+		writeError(w, err, http.StatusNotFound)
+		return
+	}
+	windowPath := renderOpenFilePath(match.handler.OpenPath, path)
+	status, err := s.apps.Start(match.def.ID, AppStartOptions{WMPath: windowPath})
+	if err != nil {
+		writeError(w, err, statusFor(err))
+		return
+	}
+	writeJSON(w, openFileResponse{
+		Path:       path,
+		AppID:      match.def.ID,
+		WindowPath: windowPath,
+		Handler: openFileHandlerResult{
+			AppID:      match.def.ID,
+			Kind:       match.handler.Kind,
+			Extensions: match.handler.Extensions,
+			Fallback:   match.handler.Fallback,
+			Priority:   match.handler.Priority,
+		},
+		Status: status,
 	})
 }
 
@@ -957,6 +1034,70 @@ func desktopParent(root, path string) string {
 		return ""
 	}
 	return parent
+}
+
+func cleanOpenFilePath(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	if !filepath.IsAbs(raw) {
+		return "", fmt.Errorf("path must be absolute")
+	}
+	return filepath.Clean(raw), nil
+}
+
+func (s *Server) openFileMatch(path string, info os.FileInfo) (openFileMatch, error) {
+	if s.apps == nil {
+		return openFileMatch{}, fmt.Errorf("app manager is not available")
+	}
+	defs, err := s.apps.discover()
+	if err != nil {
+		return openFileMatch{}, err
+	}
+	var matches []openFileMatch
+	for _, def := range defs {
+		if def.Manifest == nil {
+			continue
+		}
+		for _, handler := range def.Manifest.Handlers {
+			if fileHandlerMatches(handler, path, info) {
+				matches = append(matches, openFileMatch{def: def, handler: handler})
+			}
+		}
+	}
+	if len(matches) == 0 {
+		return openFileMatch{}, fmt.Errorf("no app can open %s", path)
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].handler.Priority != matches[j].handler.Priority {
+			return matches[i].handler.Priority > matches[j].handler.Priority
+		}
+		return matches[i].def.ID < matches[j].def.ID
+	})
+	return matches[0], nil
+}
+
+func fileHandlerMatches(handler foxapp.FileHandlerSpec, path string, info os.FileInfo) bool {
+	if info.IsDir() {
+		return handler.Kind == "directory"
+	}
+	if handler.Kind != "" && handler.Kind != "file" {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	for _, candidate := range handler.Extensions {
+		if strings.ToLower(candidate) == ext {
+			return true
+		}
+	}
+	return handler.Fallback
+}
+
+func renderOpenFilePath(template, path string) string {
+	parent := filepath.Dir(path)
+	out := strings.ReplaceAll(template, "{path}", url.QueryEscape(path))
+	out = strings.ReplaceAll(out, "{parent}", url.QueryEscape(parent))
+	return out
 }
 
 func (s *Server) handleShellStatic(w http.ResponseWriter, r *http.Request) {

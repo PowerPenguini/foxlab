@@ -18,6 +18,27 @@ func TestManifestValidateRejectsInvalidWindowPath(t *testing.T) {
 	}
 }
 
+func TestManifestValidateAcceptsFileHandlers(t *testing.T) {
+	manifest := validManifest()
+	manifest.Handlers = []FileHandlerSpec{{
+		Kind:       "file",
+		Extensions: []string{".lab"},
+		OpenPath:   "/?labPath={path}",
+		Priority:   100,
+	}}
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("expected file handler to validate, got %v", err)
+	}
+}
+
+func TestManifestValidateRejectsInvalidFileHandler(t *testing.T) {
+	manifest := validManifest()
+	manifest.Handlers = []FileHandlerSpec{{Kind: "file", Extensions: []string{"lab"}, OpenPath: "lab"}}
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("expected invalid file handler error")
+	}
+}
+
 func validManifest() Manifest {
 	return Manifest{
 		Format:  FormatV1,

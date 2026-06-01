@@ -19,5 +19,13 @@
   },
   "web": {
     "dist": "web/dist"
-  }
+  },
+  "fileHandlers": [
+    {
+      "kind": "file",
+      "extensions": [".lab"],
+      "openPath": "/?labPath={path}",
+      "priority": 100
+    }
+  ]
 }

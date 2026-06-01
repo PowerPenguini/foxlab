@@ -19,5 +19,17 @@
   },
   "web": {
     "dist": "web/dist"
-  }
+  },
+  "fileHandlers": [
+    {
+      "kind": "directory",
+      "openPath": "/?path={path}"
+    },
+    {
+      "kind": "file",
+      "fallback": true,
+      "openPath": "/?path={parent}",
+      "priority": -100
+    }
+  ]
 }

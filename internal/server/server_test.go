@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +93,77 @@ func TestShellDesktopRejectsPathOutsideWorkspace(t *testing.T) {
 	shell.Handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("GET /api/desktop outside workspace returned %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestShellOpenFileUsesManifestHandler(t *testing.T) {
+	chdirRepoRoot(t)
+	workspace := t.TempDir()
+	labPath := filepath.Join(workspace, "demo.lab")
+	writeTestFile(t, labPath, "id: demo\n")
+	appDir := t.TempDir()
+	argsPath := filepath.Join(t.TempDir(), "args.txt")
+	packageRecordingHandlerApp(t, appDir, "topology", "Topology Editor", "network", `[
+    {"kind":"file","extensions":[".lab"],"openPath":"/?labPath={path}","priority":100}
+  ]`)
+	t.Setenv("ARGS_FILE", argsPath)
+
+	shell := NewShell(Config{Workspace: workspace, AppDirs: []string{appDir}})
+	t.Cleanup(func() { _ = shell.Shutdown(context.Background()) })
+	rec := requestJSON(t, shell, http.MethodPost, "/api/files/open", openFileRequest{Path: labPath})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /api/files/open returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var response openFileResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.AppID != "topology" || response.WindowPath != "/?labPath="+url.QueryEscape(labPath) {
+		t.Fatalf("unexpected open response: %+v", response)
+	}
+	data, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "--wm-path="+response.WindowPath) {
+		t.Fatalf("recorded args missing wm path %q:\n%s", response.WindowPath, data)
+	}
+}
+
+func TestShellOpenFileMatchUsesDirectoryAndFallbackHandlers(t *testing.T) {
+	chdirRepoRoot(t)
+	workspace := t.TempDir()
+	filePath := filepath.Join(workspace, "notes.txt")
+	writeTestFile(t, filePath, "notes")
+	appDir := t.TempDir()
+	packageManifestApp(t, appDir, "files", "Files", "folder", `[
+    {"kind":"directory","openPath":"/?path={path}"},
+    {"kind":"file","fallback":true,"openPath":"/?path={parent}","priority":-100}
+  ]`)
+	s := &Server{apps: NewAppManager(Config{AppDirs: []string{appDir}}, "127.0.0.1:1")}
+
+	dirInfo, err := os.Stat(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match, err := s.openFileMatch(workspace, dirInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match.def.ID != "files" || renderOpenFilePath(match.handler.OpenPath, workspace) != "/?path="+url.QueryEscape(workspace) {
+		t.Fatalf("unexpected directory match: %+v", match)
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match, err = s.openFileMatch(filePath, fileInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match.def.ID != "files" || renderOpenFilePath(match.handler.OpenPath, filePath) != "/?path="+url.QueryEscape(workspace) {
+		t.Fatalf("unexpected fallback file match: %+v", match)
 	}
 }
 
@@ -437,6 +510,53 @@ func packageRecordingVNCViewer(t *testing.T, outDir string) {
 	if err := foxapp.Package(srcDir, filepath.Join(outDir, "vnc-viewer.foxapp")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func packageRecordingHandlerApp(t *testing.T, outDir, id, name, icon, handlersJSON string) {
+	t.Helper()
+	srcDir := t.TempDir()
+	binPath := filepath.Join(srcDir, "bin", id)
+	writeTestFile(t, filepath.Join(srcDir, foxapp.ManifestFile), manifestJSON(id, name, icon, handlersJSON))
+	writeTestFile(t, filepath.Join(srcDir, "web", "dist", "index.html"), "<!doctype html>")
+	sourcePath := filepath.Join(t.TempDir(), "main.go")
+	writeTestFile(t, sourcePath, recordingAppSource())
+	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binPath, sourcePath)
+	cmd.Env = append(os.Environ(), "GOCACHE=/tmp/foxlab-go-cache", "GOPROXY=off")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build recording app: %v\n%s", err, output)
+	}
+	if err := foxapp.Package(srcDir, filepath.Join(outDir, id+".foxapp")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func packageManifestApp(t *testing.T, outDir, id, name, icon, handlersJSON string) {
+	t.Helper()
+	srcDir := t.TempDir()
+	writeTestFile(t, filepath.Join(srcDir, foxapp.ManifestFile), manifestJSON(id, name, icon, handlersJSON))
+	writeTestFile(t, filepath.Join(srcDir, "bin", id), "binary")
+	writeTestFile(t, filepath.Join(srcDir, "web", "dist", "index.html"), "<!doctype html>")
+	if err := foxapp.Package(srcDir, filepath.Join(outDir, id+".foxapp")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func manifestJSON(id, name, icon, handlersJSON string) string {
+	return fmt.Sprintf(`{
+  "format": "foxapp.v1",
+  "id": %q,
+  "name": %q,
+  "version": "0.1.0",
+  "run": {"command": "bin/%s"},
+  "icon": {"type": "builtin", "value": %q},
+  "window": {"title": %q, "path": "/"},
+  "health": {"path": "/healthz"},
+  "web": {"dist": "web/dist"},
+  "fileHandlers": %s
+}`, id, name, id, icon, name, handlersJSON)
 }
 
 func recordingAppSource() string {

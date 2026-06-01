@@ -83,6 +83,15 @@ function App() {
     return () => events.close();
   }, []);
 
+  useEffect(() => {
+    function onMessage(event) {
+      if (event.data?.type !== 'foxlab:open-file' || !event.data.path) return;
+      openFile(event.data.path);
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [apps, launching]);
+
   async function loadDesktopPath(nextPath) {
     try {
       const suffix = nextPath ? `?path=${encodeURIComponent(nextPath)}` : '';
@@ -166,15 +175,7 @@ function App() {
   }
 
   function openDesktopEntry(entry) {
-    if (entry.type === 'dir') {
-      openInFiles(entry.path);
-      return;
-    }
-    if (isLabFile(entry.name)) {
-      openInTopology(entry.path);
-      return;
-    }
-    openInFiles(parentPath(entry.path));
+    openFile(entry.path);
   }
 
   function openDesktopEntryFromKey(entry, event) {
@@ -183,24 +184,28 @@ function App() {
     openDesktopEntry(entry);
   }
 
-  function openInFiles(path) {
-    const filesApp = apps.find((item) => item.id === 'files') || apps.find((item) => item.name?.toLowerCase() === 'files');
-    if (!filesApp) {
-      setAppState('missing');
-      setMessage('files app is not available');
-      return;
+  async function openFile(path) {
+    if (launching) return;
+    setLaunching(true);
+    setStartOpen(false);
+    setMessage('opening file');
+    try {
+      const data = await apiJSON('/api/files/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      if (data?.status) {
+        setApps((current) => updateAppMeta(current, appMetaFromStatus(data.status), data.status.state || 'starting'));
+        setAppState(data.status.state || 'starting');
+      }
+      setMessage('waiting for wm request');
+    } catch (err) {
+      setAppState('error');
+      setMessage(err.message);
+    } finally {
+      setLaunching(false);
     }
-    openApp(filesApp, { wmPath: `/?path=${encodeURIComponent(path || '/')}` });
-  }
-
-  function openInTopology(labPath) {
-    const topologyApp = apps.find((item) => item.id === 'topology') || apps.find((item) => item.name?.toLowerCase().includes('topology'));
-    if (!topologyApp) {
-      setAppState('missing');
-      setMessage('topology editor is not available');
-      return;
-    }
-    openApp(topologyApp, { wmPath: `/?labPath=${encodeURIComponent(labPath)}` });
   }
 
   function startWindowDrag(event, item) {
@@ -503,13 +508,6 @@ function appMetaFromWindow(detail = {}) {
 
 function taskbarLabel(meta) {
   return (meta.id || meta.name || 'app').toLowerCase().replaceAll(' ', '-');
-}
-
-function parentPath(path) {
-  const clean = String(path || '/').replace(/\/+$/, '') || '/';
-  if (clean === '/') return '/';
-  const index = clean.lastIndexOf('/');
-  return index <= 0 ? '/' : clean.slice(0, index);
 }
 
 function isDiskImage(name) {
