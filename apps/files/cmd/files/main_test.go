@@ -31,7 +31,7 @@ func TestDeleteRejectsNonEmptyDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	app := newFilesApp(dir, "")
+	app := newFilesApp(dir, "", "")
 	req := httptestRequestJSON(writePathRequest{Path: dir})
 	rec := httptestRecorder()
 	app.deleteFS(rec, req)
@@ -96,7 +96,7 @@ func TestQemuInfoCommandUsesForceShare(t *testing.T) {
 }
 
 func TestMountListCopiesSessions(t *testing.T) {
-	app := newFilesApp(t.TempDir(), "")
+	app := newFilesApp(t.TempDir(), "", "")
 	app.mounts["id"] = &mountSession{ID: "id", Image: "/tmp/a.qcow2", Path: "/tmp/m", LastUsed: time.Now()}
 	items := app.mountList()
 	items[0].Image = "changed"

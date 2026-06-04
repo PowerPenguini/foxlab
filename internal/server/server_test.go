@@ -130,6 +130,49 @@ func TestShellOpenFileUsesManifestHandler(t *testing.T) {
 	}
 }
 
+func TestShellControlOpenFileUsesManifestHandler(t *testing.T) {
+	chdirRepoRoot(t)
+	workspace := t.TempDir()
+	labPath := filepath.Join(workspace, "demo.lab")
+	writeTestFile(t, labPath, "id: demo\n")
+	appDir := t.TempDir()
+	argsPath := filepath.Join(t.TempDir(), "args.txt")
+	packageRecordingHandlerApp(t, appDir, "topology", "Topology Editor", "network", `[
+    {"kind":"file","extensions":[".lab"],"openPath":"/?labPath={path}","priority":100}
+  ]`)
+	t.Setenv("ARGS_FILE", argsPath)
+
+	manager := wm.NewManager()
+	shellServer := &Server{
+		cfg: Config{Workspace: workspace, AppDirs: []string{appDir}},
+		mux: http.NewServeMux(),
+		wm:  manager,
+	}
+	wmAddr, err := manager.Start(shellServer.registerShellControl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Stop()
+	shellServer.cfg.WMAddr = wmAddr
+	shellServer.apps = NewAppManager(shellServer.cfg, wmAddr)
+	t.Cleanup(shellServer.apps.StopAll)
+
+	response, err := wm.OpenFile(context.Background(), wmAddr, wm.ShellOpenFileRequest{Path: labPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.AppID != "topology" || response.WindowPath != "/?labPath="+url.QueryEscape(labPath) || response.URL == "" {
+		t.Fatalf("unexpected open response: %+v", response)
+	}
+	data, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "--wm-path="+response.WindowPath) {
+		t.Fatalf("recorded args missing wm path %q:\n%s", response.WindowPath, data)
+	}
+}
+
 func TestShellOpenFileMatchUsesDirectoryAndFallbackHandlers(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()

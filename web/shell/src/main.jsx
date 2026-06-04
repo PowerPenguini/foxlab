@@ -86,15 +86,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    function onMessage(event) {
-      if (event.data?.type !== 'foxlab:open-file' || !event.data.path) return;
-      openFile(event.data.path);
-    }
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [apps, launching]);
-
-  useEffect(() => {
     if (!contextMenu) return undefined;
     function close() {
       setContextMenu(null);

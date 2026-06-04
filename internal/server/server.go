@@ -21,6 +21,7 @@ import (
 	"foxlab/internal/lab"
 	"foxlab/internal/virt"
 	"foxlab/internal/wm"
+	"google.golang.org/grpc"
 )
 
 type Config struct {
@@ -61,18 +62,18 @@ func NewShell(cfg Config) *http.Server {
 	if cfg.Workspace == "" {
 		cfg.Workspace = "."
 	}
-	windowManager := wm.NewManager()
-	wmAddr, err := windowManager.Start()
+	s := &Server{
+		cfg: cfg,
+		mux: http.NewServeMux(),
+		wm:  wm.NewManager(),
+	}
+	wmAddr, err := s.wm.Start(s.registerShellControl)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "wm grpc server failed to start: %v\n", err)
 	}
 	cfg.WMAddr = wmAddr
-	s := &Server{
-		cfg:  cfg,
-		mux:  http.NewServeMux(),
-		wm:   windowManager,
-		apps: NewAppManager(cfg, wmAddr),
-	}
+	s.cfg = cfg
+	s.apps = NewAppManager(cfg, wmAddr)
 	s.shellRoutes()
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -85,6 +86,10 @@ func NewShell(cfg Config) *http.Server {
 		s.wm.Stop()
 	})
 	return srv
+}
+
+func (s *Server) registerShellControl(server *grpc.Server) {
+	wm.RegisterShellControlServer(server, s)
 }
 
 func NewTopology(cfg Config) *http.Server {
@@ -351,28 +356,52 @@ func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err, http.StatusBadRequest)
 		return
 	}
-	path, err := cleanOpenFilePath(req.Path)
+	response, err := s.openFile(req.Path)
 	if err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(w, err, openFileStatusFor(err))
 		return
+	}
+	writeJSON(w, response)
+}
+
+func (s *Server) OpenFile(ctx context.Context, req *wm.ShellOpenFileRequest) (*wm.ShellOpenFileResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("missing open file request")
+	}
+	response, err := s.openFile(req.Path)
+	if err != nil {
+		return nil, err
+	}
+	return &wm.ShellOpenFileResponse{
+		Path:       response.Path,
+		AppID:      response.AppID,
+		WindowPath: response.WindowPath,
+		URL:        response.Status.URL,
+	}, nil
+}
+
+func (s *Server) openFile(rawPath string) (openFileResponse, error) {
+	if s.apps == nil {
+		return openFileResponse{}, fmt.Errorf("app manager is not available")
+	}
+	path, err := cleanOpenFilePath(rawPath)
+	if err != nil {
+		return openFileResponse{}, err
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		writeError(w, err, statusFor(err))
-		return
+		return openFileResponse{}, err
 	}
 	match, err := s.openFileMatch(path, info)
 	if err != nil {
-		writeError(w, err, http.StatusNotFound)
-		return
+		return openFileResponse{}, err
 	}
 	windowPath := renderOpenFilePath(match.handler.OpenPath, path)
 	status, err := s.apps.Start(match.def.ID, AppStartOptions{WMPath: windowPath})
 	if err != nil {
-		writeError(w, err, statusFor(err))
-		return
+		return openFileResponse{}, err
 	}
-	writeJSON(w, openFileResponse{
+	return openFileResponse{
 		Path:       path,
 		AppID:      match.def.ID,
 		WindowPath: windowPath,
@@ -384,7 +413,21 @@ func (s *Server) handleOpenFile(w http.ResponseWriter, r *http.Request) {
 			Priority:   match.handler.Priority,
 		},
 		Status: status,
-	})
+	}, nil
+}
+
+func openFileStatusFor(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "no app can open") {
+		return http.StatusNotFound
+	}
+	if strings.Contains(msg, "path is required") || strings.Contains(msg, "path must be absolute") {
+		return http.StatusBadRequest
+	}
+	return statusFor(err)
 }
 
 func (s *Server) handleLabFile(w http.ResponseWriter, r *http.Request) {

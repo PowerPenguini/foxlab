@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	serviceName           = "foxlab.wm.WindowManager"
-	openWindowMethodName  = "/" + serviceName + "/OpenWindow"
-	closeWindowMethodName = "/" + serviceName + "/CloseWindow"
+	serviceName                = "foxlab.wm.WindowManager"
+	openWindowMethodName       = "/" + serviceName + "/OpenWindow"
+	closeWindowMethodName      = "/" + serviceName + "/CloseWindow"
+	shellControlServiceName    = "foxlab.shell.ShellControl"
+	shellControlOpenFileMethod = "/" + shellControlServiceName + "/OpenFile"
 )
 
 type OpenWindowRequest struct {
@@ -42,6 +44,17 @@ type CloseWindowRequest struct {
 
 type CloseWindowResponse struct {
 	Accepted bool `json:"accepted"`
+}
+
+type ShellOpenFileRequest struct {
+	Path string `json:"path"`
+}
+
+type ShellOpenFileResponse struct {
+	Path       string `json:"path"`
+	AppID      string `json:"appID"`
+	WindowPath string `json:"windowPath"`
+	URL        string `json:"url,omitempty"`
 }
 
 type WindowEvent struct {
@@ -105,11 +118,13 @@ type Manager struct {
 	nextZ       int
 }
 
+type Registrar func(*grpc.Server)
+
 func NewManager() *Manager {
 	return &Manager{subscribers: make(map[chan WindowEvent]struct{}), windows: make(map[string]WindowSnapshot), nextZ: 10}
 }
 
-func (m *Manager) Start() (string, error) {
+func (m *Manager) Start(registrars ...Registrar) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.addr != "" {
@@ -121,6 +136,11 @@ func (m *Manager) Start() (string, error) {
 	}
 	server := grpc.NewServer()
 	RegisterWindowManagerServer(server, m)
+	for _, register := range registrars {
+		if register != nil {
+			register(server)
+		}
+	}
 	m.addr = listener.Addr().String()
 	m.listener = listener
 	m.server = server
@@ -377,9 +397,35 @@ func CloseWindow(ctx context.Context, wmAddr string, req CloseWindowRequest) err
 	return nil
 }
 
+func OpenFile(ctx context.Context, wmAddr string, req ShellOpenFileRequest) (ShellOpenFileResponse, error) {
+	if wmAddr == "" {
+		return ShellOpenFileResponse{}, fmt.Errorf("shell control address is required")
+	}
+	conn, err := grpc.DialContext(
+		ctx,
+		wmAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(jsonCodec{})),
+	)
+	if err != nil {
+		return ShellOpenFileResponse{}, err
+	}
+	defer conn.Close()
+
+	var res ShellOpenFileResponse
+	if err := conn.Invoke(ctx, shellControlOpenFileMethod, &req, &res); err != nil {
+		return ShellOpenFileResponse{}, err
+	}
+	return res, nil
+}
+
 type WindowManagerServer interface {
 	OpenWindow(context.Context, *OpenWindowRequest) (*OpenWindowResponse, error)
 	CloseWindow(context.Context, *CloseWindowRequest) (*CloseWindowResponse, error)
+}
+
+type ShellControlServer interface {
+	OpenFile(context.Context, *ShellOpenFileRequest) (*ShellOpenFileResponse, error)
 }
 
 func RegisterWindowManagerServer(server *grpc.Server, service WindowManagerServer) {
@@ -399,6 +445,19 @@ func RegisterWindowManagerServer(server *grpc.Server, service WindowManagerServe
 	}, service)
 }
 
+func RegisterShellControlServer(server *grpc.Server, service ShellControlServer) {
+	server.RegisterService(&grpc.ServiceDesc{
+		ServiceName: shellControlServiceName,
+		HandlerType: (*ShellControlServer)(nil),
+		Methods: []grpc.MethodDesc{
+			{
+				MethodName: "OpenFile",
+				Handler:    shellControlOpenFileHandler,
+			},
+		},
+	}, service)
+}
+
 func openWindowHandler(service any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	req := new(OpenWindowRequest)
 	if err := dec(req); err != nil {
@@ -413,6 +472,24 @@ func openWindowHandler(service any, ctx context.Context, dec func(any) error, in
 	}
 	handler := func(ctx context.Context, request any) (any, error) {
 		return service.(WindowManagerServer).OpenWindow(ctx, request.(*OpenWindowRequest))
+	}
+	return interceptor(ctx, req, info, handler)
+}
+
+func shellControlOpenFileHandler(service any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
+	req := new(ShellOpenFileRequest)
+	if err := dec(req); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return service.(ShellControlServer).OpenFile(ctx, req)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     service,
+		FullMethod: shellControlOpenFileMethod,
+	}
+	handler := func(ctx context.Context, request any) (any, error) {
+		return service.(ShellControlServer).OpenFile(ctx, request.(*ShellOpenFileRequest))
 	}
 	return interceptor(ctx, req, info, handler)
 }

@@ -79,6 +79,18 @@ function App() {
     }
   }
 
+  async function openFile(path) {
+    try {
+      await apiJSON('/api/files/open', {
+        method: 'POST',
+        body: JSON.stringify({ path }),
+      });
+      setMessage('');
+    } catch (err) {
+      setMessage(err.message);
+    }
+  }
+
   function activateEntry(entry = selected) {
     if (!entry) return;
     if (entry.type === 'dir') {
@@ -208,10 +220,6 @@ function FileList({ entries, selected, onSelect, onOpen, onContextMenu }) {
       ))}
     </section>
   );
-}
-
-function openFile(path) {
-  window.parent?.postMessage({ type: 'foxlab:open-file', path }, '*');
 }
 
 function downloadFile(path) {

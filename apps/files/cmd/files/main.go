@@ -62,7 +62,7 @@ func main() {
 	}
 	fs.Parse(os.Args[1:])
 
-	app := newFilesApp(cleanWorkspace(*workspace), *uri)
+	app := newFilesApp(cleanWorkspace(*workspace), *uri, *wmAddr)
 	defer app.cleanupAll(context.Background())
 
 	mux := http.NewServeMux()
@@ -74,6 +74,7 @@ func main() {
 	mux.HandleFunc("/api/fs/rename", app.renameFS)
 	mux.HandleFunc("/api/fs/delete", app.deleteFS)
 	mux.HandleFunc("/api/fs/copy", app.copyFS)
+	mux.HandleFunc("/api/files/open", app.openFile)
 	mux.HandleFunc("/api/images/discover", app.discoverImages)
 	mux.HandleFunc("/api/images/info", app.imageInfo)
 	mux.HandleFunc("/api/images/layers", app.imageLayers)
@@ -108,6 +109,7 @@ func main() {
 type filesApp struct {
 	workspace string
 	libvirt   string
+	wmAddr    string
 	static    string
 	helper    string
 
@@ -223,11 +225,12 @@ type helperResponse struct {
 	Backend    string `json:"backend,omitempty"`
 }
 
-func newFilesApp(workspace, libvirt string) *filesApp {
+func newFilesApp(workspace, libvirt, wmAddr string) *filesApp {
 	helper, _ := os.Executable()
 	return &filesApp{
 		workspace: workspace,
 		libvirt:   libvirt,
+		wmAddr:    wmAddr,
 		static:    filepath.Join("web", "dist"),
 		helper:    helper,
 		mounts:    map[string]*mountSession{},
@@ -344,6 +347,35 @@ func (a *filesApp) downloadFS(w http.ResponseWriter, r *http.Request) {
 	a.touchMount(path)
 	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(path)))
 	http.ServeFile(w, r, path)
+}
+
+func (a *filesApp) openFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if a.wmAddr == "" {
+		writeError(w, fmt.Errorf("shell control is not configured"), http.StatusInternalServerError)
+		return
+	}
+	var req writePathRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	path, err := cleanAnyPath(req.Path)
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	res, err := wm.OpenFile(ctx, a.wmAddr, wm.ShellOpenFileRequest{Path: path})
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (a *filesApp) mkdirFS(w http.ResponseWriter, r *http.Request) {
