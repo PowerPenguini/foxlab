@@ -48,7 +48,11 @@ Managed libvirt names use the `foxlab-<lab-id>-<resource-id>` convention. Foxlab
 
 ## Experimental MAC NAT Driver
 
-`mode: macnat-bridge` is implemented by an experimental kernel module at `drivers/macnat`. It exposes `/dev/macnat`, accepts multiple active switch/uplink sessions, rewrites outbound VM Ethernet source MACs to the host uplink MAC, learns VM TAP ports/IPs from ARP/DHCP/IPv4, and forwards matched inbound ARP/DHCP/IPv4 frames back to the learned VM port.
+`mode: macnat-bridge` is implemented by an experimental kernel module kept as the `drivers/macnat` submodule. It exposes `/dev/macnat`, accepts multiple active switch/uplink sessions, rewrites outbound VM Ethernet source MACs to the host uplink MAC, learns VM TAP ports/IPs from ARP/DHCP/IPv4, and forwards matched inbound ARP/DHCP/IPv4 frames back to the learned VM port.
+
+```sh
+git submodule update --init --recursive
+```
 
 ```sh
 make macnat-module

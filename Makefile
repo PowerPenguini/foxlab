@@ -122,10 +122,10 @@ package-files:
 	GOCACHE="$(GOCACHE)" GOPROXY="$(GOPROXY)" $(GO) run . app package apps/files --out dist/apps/files.foxapp
 
 macnat-module:
-	$(MAKE) -C drivers/macnat
+	$(MAKE) -C drivers/macnat BUILD_DIR="$(CURDIR)/build/macnat"
 
 macnat-module-clean:
-	$(MAKE) -C drivers/macnat clean
+	$(MAKE) -C drivers/macnat BUILD_DIR="$(CURDIR)/build/macnat" clean
 
 build: package-topology package-vnc-viewer package-terminal package-files
 	GOCACHE="$(GOCACHE)" GOPROXY="$(GOPROXY)" $(GO) build -buildvcs=false ./...
