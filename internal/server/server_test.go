@@ -476,7 +476,8 @@ func TestTopologyLaunchesTerminalPackageWithShellConsoleTarget(t *testing.T) {
 	for _, want := range []string{
 		"--wm-app-id=terminal",
 		"--wm-title=Shell console demo / vm1",
-		"--command=exec 'virsh' '-c' 'qemu:///system' 'console' 'foxlab-demo-vm1'",
+		"--uri=qemu:///system",
+		"--libvirt-console-domain=foxlab-demo-vm1",
 	} {
 		if !strings.Contains(args, want) {
 			t.Fatalf("recorded terminal args missing %q:\n%s", want, args)

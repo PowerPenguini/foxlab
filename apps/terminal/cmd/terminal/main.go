@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	libvirt "github.com/libvirt/libvirt-go"
 
 	"foxlab/internal/wm"
 )
@@ -38,6 +39,7 @@ func main() {
 	workspace := fs.String("workspace", ".", "workspace directory")
 	uri := fs.String("uri", "", "libvirt URI")
 	command := fs.String("command", "", "command to run instead of the default shell")
+	consoleDomain := fs.String("libvirt-console-domain", "", "libvirt domain name for serial console mode")
 	wmAddr := fs.String("wm-addr", "", "window manager gRPC address")
 	wmAppID := fs.String("wm-app-id", "terminal", "window manager app id")
 	wmName := fs.String("wm-name", "Terminal", "window manager app name")
@@ -50,14 +52,15 @@ func main() {
 		fs.PrintDefaults()
 	}
 	fs.Parse(os.Args[1:])
-	_ = uri
 
 	app := &terminalApp{
-		workspace: cleanWorkspace(*workspace),
-		shell:     defaultShell(),
-		command:   *command,
-		static:    filepath.Join("web", "dist"),
-		wmAddr:    *wmAddr,
+		workspace:     cleanWorkspace(*workspace),
+		shell:         defaultShell(),
+		command:       *command,
+		libvirtURI:    *uri,
+		consoleDomain: *consoleDomain,
+		static:        filepath.Join("web", "dist"),
+		wmAddr:        *wmAddr,
 		closeRequest: wm.CloseWindowRequest{
 			AppID: *wmAppID,
 			Path:  normalizedWindowPath(*wmPath),
@@ -95,14 +98,16 @@ func main() {
 }
 
 type terminalApp struct {
-	workspace    string
-	shell        string
-	command      string
-	static       string
-	wmAddr       string
-	closeRequest wm.CloseWindowRequest
-	shutdown     chan struct{}
-	shutdownOnce sync.Once
+	workspace     string
+	shell         string
+	command       string
+	libvirtURI    string
+	consoleDomain string
+	static        string
+	wmAddr        string
+	closeRequest  wm.CloseWindowRequest
+	shutdown      chan struct{}
+	shutdownOnce  sync.Once
 }
 
 type clientMessage struct {
@@ -156,6 +161,10 @@ func (a *terminalApp) terminalWebsocket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer client.Close()
+	if a.consoleDomain != "" {
+		a.libvirtConsoleWebsocket(r.Context(), client, reader)
+		return
+	}
 
 	cmd := terminalCommand(a.shell, a.command)
 	cmd.Dir = a.workspace
@@ -244,6 +253,85 @@ func (a *terminalApp) terminalWebsocket(w http.ResponseWriter, r *http.Request) 
 			_ = cmd.Process.Kill()
 		}
 		<-exit
+	}
+}
+
+func (a *terminalApp) libvirtConsoleWebsocket(ctx context.Context, client net.Conn, reader *bufio.Reader) {
+	conn, err := libvirt.NewConnect(a.libvirtURI)
+	if err != nil {
+		writeWSJSON(client, serverMessage{Type: "error", Data: err.Error()})
+		return
+	}
+	defer conn.Close()
+	dom, err := conn.LookupDomainByName(a.consoleDomain)
+	if err != nil {
+		writeWSJSON(client, serverMessage{Type: "error", Data: err.Error()})
+		return
+	}
+	defer dom.Free()
+	stream, err := conn.NewStream(0)
+	if err != nil {
+		writeWSJSON(client, serverMessage{Type: "error", Data: err.Error()})
+		return
+	}
+	defer stream.Free()
+	if err := dom.OpenConsole("", stream, libvirt.DOMAIN_CONSOLE_FORCE); err != nil {
+		writeWSJSON(client, serverMessage{Type: "error", Data: err.Error()})
+		return
+	}
+
+	var writeMu sync.Mutex
+	streamDone := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := stream.Recv(buf)
+			if n > 0 {
+				writeMu.Lock()
+				_ = writeWSJSON(client, serverMessage{Type: "output", Data: string(buf[:n])})
+				writeMu.Unlock()
+			}
+			if err != nil {
+				streamDone <- err
+				return
+			}
+		}
+	}()
+
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		for {
+			opcode, payload, err := readWebsocketFrame(reader)
+			if err != nil {
+				return
+			}
+			if opcode == 0x8 {
+				return
+			}
+			if opcode != 0x1 && opcode != 0x2 && opcode != 0x0 {
+				continue
+			}
+			var msg clientMessage
+			if err := json.Unmarshal(payload, &msg); err != nil {
+				continue
+			}
+			if msg.Type == "input" && msg.Data != "" {
+				_, _ = stream.Send([]byte(msg.Data))
+			}
+		}
+	}()
+
+	select {
+	case err := <-streamDone:
+		writeMu.Lock()
+		_ = writeWSJSON(client, exitMessage(err))
+		writeMu.Unlock()
+		go a.closeWindowAndShutdown()
+	case <-readDone:
+		_ = stream.Abort()
+	case <-ctx.Done():
+		_ = stream.Abort()
 	}
 }
 

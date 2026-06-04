@@ -610,7 +610,7 @@ function Inspector({ lab, labPath, setLab, selected, object, status, isos, netwo
   if (!object) {
     return (
       <div className="inspector-body empty">
-        <strong>$ virsh state</strong>
+        <strong>$ libvirt state</strong>
         <StatusBoard status={status} />
       </div>
     );

@@ -1150,11 +1150,8 @@ func libvirtVolumeMetadata(requestedPath, xmlText string) (qemuInfo, []layerInfo
 	return info, layers, nil
 }
 
-func runningDomainDiskPaths(ctx context.Context, uri string) ([]string, error) {
-	if paths, err := runningDomainDiskPathsLibvirt(uri); err == nil {
-		return paths, nil
-	}
-	return runningDomainDiskPathsVirsh(ctx, uri)
+func runningDomainDiskPaths(_ context.Context, uri string) ([]string, error) {
+	return runningDomainDiskPathsLibvirt(uri)
 }
 
 type domainXML struct {
@@ -1212,40 +1209,6 @@ func parseDomainDiskPaths(xmlText string) []string {
 		}
 	}
 	return paths
-}
-
-func runningDomainDiskPathsVirsh(ctx context.Context, uri string) ([]string, error) {
-	if _, err := exec.LookPath("virsh"); err != nil {
-		return nil, err
-	}
-	args := []string{}
-	if uri != "" {
-		args = append(args, "-c", uri)
-	}
-	args = append(args, "list", "--name", "--state-running")
-	out, err := exec.CommandContext(ctx, "virsh", args...).CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
-	}
-	var paths []string
-	for _, name := range strings.Fields(string(out)) {
-		listArgs := []string{}
-		if uri != "" {
-			listArgs = append(listArgs, "-c", uri)
-		}
-		listArgs = append(listArgs, "domblklist", "--details", name)
-		blk, err := exec.CommandContext(ctx, "virsh", listArgs...).CombinedOutput()
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(blk), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) >= 4 && filepath.IsAbs(fields[len(fields)-1]) {
-				paths = append(paths, filepath.Clean(fields[len(fields)-1]))
-			}
-		}
-	}
-	return paths, nil
 }
 
 func sameFilePath(a, b string) bool {

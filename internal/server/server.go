@@ -738,7 +738,7 @@ func (s *Server) launchShellConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, erro
 		WMAddr:     s.cfg.WMAddr,
 		WMTitle:    "Shell console " + label,
 		ExtraArgs: []string{
-			"--command", "exec " + shellJoin(virshConsoleCommand(s.cfg.LibvirtURI, loaded.ManagedDomainName(vm))),
+			"--libvirt-console-domain", loaded.ManagedDomainName(vm),
 		},
 	})
 	if err := cmd.Start(); err != nil {
@@ -761,29 +761,6 @@ func (s *Server) launchShellConsole(loaded *lab.Lab, vm lab.VM) (AppStatus, erro
 	status.State = "running"
 	status.URL = url
 	return status, nil
-}
-
-func virshConsoleCommand(uri, domain string) []string {
-	args := []string{"virsh"}
-	if uri != "" {
-		args = append(args, "-c", uri)
-	}
-	return append(args, "console", domain)
-}
-
-func shellJoin(args []string) string {
-	quoted := make([]string, 0, len(args))
-	for _, arg := range args {
-		quoted = append(quoted, shellQuote(arg))
-	}
-	return strings.Join(quoted, " ")
-}
-
-func shellQuote(arg string) string {
-	if arg == "" {
-		return "''"
-	}
-	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 
 func labVMByID(loaded *lab.Lab, vmID string) (lab.VM, bool) {
