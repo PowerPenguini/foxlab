@@ -23,7 +23,6 @@ function App() {
   const [startOpen, setStartOpen] = useState(false);
   const [desktopListing, setDesktopListing] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
-  const [errorDialog, setErrorDialog] = useState(null);
 
   useEffect(() => {
     apiJSON('/api/apps')
@@ -155,7 +154,7 @@ function App() {
     } catch (err) {
       setAppState('error');
       setMessage(err.message);
-      setErrorDialog({ title: 'open failed', message: err.message });
+      openErrorWindow('open failed', err.message);
     } finally {
       setLaunching(false);
     }
@@ -165,12 +164,14 @@ function App() {
     event.stopPropagation();
     const closed = windows.find((item) => item.id === windowId);
     setWindows((current) => current.filter((item) => item.id !== windowId));
-    forgetWindow(windowId);
+    if (!closed?.system) {
+      forgetWindow(windowId);
+    }
     if (activeWindowId === windowId) {
       const fallback = windows.find((item) => item.id !== windowId && !item.minimized);
       setActiveWindowId(fallback?.id || '');
     }
-    if (closed?.appMeta.id && apps.some((item) => item.id === closed.appMeta.id)) {
+    if (closed?.appMeta.id && !closed?.system && apps.some((item) => item.id === closed.appMeta.id)) {
       setAppState('stopping');
       setMessage(`stopping ${closed.appMeta.name}`);
       try {
@@ -262,9 +263,37 @@ function App() {
     } catch (err) {
       setAppState('error');
       setMessage(err.message);
+      openErrorWindow('open failed', err.message);
     } finally {
       setLaunching(false);
     }
+  }
+
+  function openErrorWindow(title, errorMessage) {
+    const id = `system:error:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    setWindows((current) => {
+      const z = nextZ(current);
+      return [
+        ...current,
+        {
+          id,
+          system: 'error',
+          appMeta: {
+            id: 'error',
+            name: 'Error',
+            windowTitle: title,
+            icon: { type: 'glyph', value: '!' },
+          },
+          message: errorMessage,
+          url: '',
+          rect: defaultErrorWindowRect(current.length),
+          maximized: false,
+          minimized: false,
+          z,
+        },
+      ];
+    });
+    setActiveWindowId(id);
   }
 
   function startWindowDrag(event, item) {
@@ -283,7 +312,7 @@ function App() {
         ...origin,
         x: origin.x + move.clientX - startX,
         y: origin.y + move.clientY - startY,
-      });
+      }, Boolean(item.system));
       updateWindow(item.id, {
         rect: latestRect,
       });
@@ -314,7 +343,7 @@ function App() {
     const startX = event.clientX;
     const startY = event.clientY;
     function onMove(move) {
-      latestRect = resizeWindowRect(origin, move.clientX - startX, move.clientY - startY, edges);
+      latestRect = resizeWindowRect(origin, move.clientX - startX, move.clientY - startY, edges, Boolean(item.system));
       updateWindow(item.id, {
         rect: latestRect,
       });
@@ -381,10 +410,11 @@ function App() {
         const windowStyle = item.maximized
           ? { left: 8, top: 8, width: 'calc(100vw - 16px)', height: 'calc(100vh - 44px)', zIndex: item.z }
           : { left: item.rect.x, top: item.rect.y, width: item.rect.width, height: item.rect.height, zIndex: item.z };
+        const systemClass = item.system ? `system-${item.system}` : '';
         return (
           <section
             key={item.id}
-            className={`lab-window ${item.id === activeWindowId ? 'active' : ''} ${item.maximized ? 'maximized' : ''} ${resizingWindowId === item.id ? 'resizing' : ''}`}
+            className={`lab-window ${systemClass} ${item.id === activeWindowId ? 'active' : ''} ${item.maximized ? 'maximized' : ''} ${resizingWindowId === item.id ? 'resizing' : ''}`}
             style={windowStyle}
             onPointerDown={() => bringWindowToFront(item.id)}
           >
@@ -396,9 +426,18 @@ function App() {
                 <button aria-label="Close" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => closeWindow(item.id, event)}>x</button>
               </div>
             </header>
-            <main className="iframe-stage">
-              <iframe className="app-frame" title={item.appMeta.windowTitle} src={item.url} />
-            </main>
+            {item.system === 'error' ? (
+              <main className="system-window-body error-window-body">
+                <p>{item.message}</p>
+                <div className="error-window-actions">
+                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => closeWindow(item.id, event)}>ok</button>
+                </div>
+              </main>
+            ) : (
+              <main className="iframe-stage">
+                <iframe className="app-frame" title={item.appMeta.windowTitle} src={item.url} />
+              </main>
+            )}
             {!item.maximized && (
               <div className="window-resize-zones" aria-hidden="true">
                 {resizeEdges.map((edge) => (
@@ -450,7 +489,6 @@ function App() {
       )}
 
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
-      <ErrorDialog dialog={errorDialog} onClose={() => setErrorDialog(null)} />
     </div>
   );
 }
@@ -520,22 +558,6 @@ function ContextMenu({ menu, onClose }) {
         </button>
       ))}
     </div>
-  );
-}
-
-function ErrorDialog({ dialog, onClose }) {
-  if (!dialog) return null;
-  return (
-    <section className="error-dialog" role="alertdialog" aria-modal="true" aria-label={dialog.title}>
-      <header>
-        <span>{dialog.title}</span>
-        <button type="button" aria-label="Close" onClick={onClose}>x</button>
-      </header>
-      <p>{dialog.message}</p>
-      <footer>
-        <button type="button" onClick={onClose}>ok</button>
-      </footer>
-    </section>
   );
 }
 
@@ -610,7 +632,7 @@ function placementRect(rect, index) {
 }
 
 function persistWindowPlacement(windowId, patch) {
-  if (!windowId) return;
+  if (!windowId || isSystemWindowID(windowId)) return;
   fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -619,10 +641,14 @@ function persistWindowPlacement(windowId, patch) {
 }
 
 function forgetWindow(windowId) {
-  if (!windowId) return;
+  if (!windowId || isSystemWindowID(windowId)) return;
   fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
     method: 'DELETE',
   }).catch(() => {});
+}
+
+function isSystemWindowID(windowId) {
+  return String(windowId || '').startsWith('system:');
 }
 
 function releasePointer(target, pointerId) {
@@ -741,9 +767,21 @@ function defaultWindowRect(index = 0) {
   });
 }
 
-function clampWindowRect(rect) {
-  const minWidth = Math.min(720, window.innerWidth - 16);
-  const minHeight = Math.min(420, window.innerHeight - 44);
+function defaultErrorWindowRect(index = 0) {
+  const width = Math.min(560, window.innerWidth - 32);
+  const height = Math.min(220, window.innerHeight - 72);
+  const offset = Math.min(index * 22, 96);
+  return clampWindowRect({
+    x: Math.max(8, Math.round((window.innerWidth - width) / 2) + offset),
+    y: Math.max(24, 72 + offset),
+    width,
+    height,
+  }, true);
+}
+
+function clampWindowRect(rect, compact = false) {
+  const minWidth = compact ? Math.min(360, window.innerWidth - 16) : Math.min(720, window.innerWidth - 16);
+  const minHeight = compact ? Math.min(180, window.innerHeight - 44) : Math.min(420, window.innerHeight - 44);
   const width = Math.min(Math.max(minWidth, rect.width), Math.max(minWidth, window.innerWidth - 16));
   const height = Math.min(Math.max(minHeight, rect.height), Math.max(minHeight, window.innerHeight - 44));
   const visibleHandleWidth = Math.min(96, Math.max(40, width / 3));
@@ -759,9 +797,9 @@ function clampWindowRect(rect) {
   };
 }
 
-function resizeWindowRect(origin, dx, dy, edges) {
-  const minWidth = Math.min(720, window.innerWidth - 16);
-  const minHeight = Math.min(420, window.innerHeight - 44);
+function resizeWindowRect(origin, dx, dy, edges, compact = false) {
+  const minWidth = compact ? Math.min(360, window.innerWidth - 16) : Math.min(720, window.innerWidth - 16);
+  const minHeight = compact ? Math.min(180, window.innerHeight - 44) : Math.min(420, window.innerHeight - 44);
   const next = { ...origin };
 
   if (edges.includes('e')) {
@@ -779,7 +817,7 @@ function resizeWindowRect(origin, dx, dy, edges) {
     next.y = origin.y + origin.height - next.height;
   }
 
-  return clampWindowRect(next);
+  return clampWindowRect(next, compact);
 }
 
 async function apiJSON(url, options) {

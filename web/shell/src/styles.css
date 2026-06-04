@@ -634,47 +634,6 @@ input:-webkit-autofill:focus {
   outline: 0;
 }
 
-.error-dialog {
-  position: fixed;
-  left: 50%;
-  top: 28%;
-  z-index: 10001;
-  width: min(520px, calc(100vw - 32px));
-  border: 1px solid #c7cbc8;
-  background: #080909;
-  color: #c7cbc8;
-  transform: translateX(-50%);
-  box-shadow: inset 0 0 0 1px #000;
-}
-
-.error-dialog header {
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1ch;
-  padding: 2px 6px;
-  border-bottom: 1px solid #c7cbc8;
-  background: #d86b6b;
-  color: #080909;
-}
-
-.error-dialog header button {
-  color: #080909;
-}
-
-.error-dialog p {
-  margin: 0;
-  padding: 10px 8px;
-  overflow-wrap: anywhere;
-}
-
-.error-dialog footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 8px 8px;
-}
-
 .lab-window {
   position: fixed;
   width: min(1560px, calc(100vw - 48px));
@@ -689,6 +648,11 @@ input:-webkit-autofill:focus {
   box-shadow: 0 0 0 1px #000, 0 0 18px rgba(190, 198, 192, 0.055);
 }
 
+.lab-window.system-error {
+  min-width: min(360px, calc(100vw - 16px));
+  min-height: 180px;
+}
+
 .lab-window.active {
   border-color: #6d7470;
 }
@@ -696,6 +660,49 @@ input:-webkit-autofill:focus {
 .lab-window.active .window-titlebar {
   background: #c7cbc8;
   color: #080909;
+}
+
+.system-window-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.error-window-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  color: #d6d6d6;
+}
+
+.error-window-body p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.error-window-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.error-window-actions button {
+  min-width: 6ch;
+  min-height: 21px;
+  padding: 1px 7px;
+  border: 1px solid #3f4542;
+  background: #080909;
+  color: #c7cbc8;
+  text-align: center;
+  box-shadow: inset 0 0 0 1px #000;
+}
+
+.error-window-actions button:hover,
+.error-window-actions button:focus-visible {
+  background: #c7cbc8;
+  color: #080909;
+  outline: 0;
 }
 
 .window-titlebar {
