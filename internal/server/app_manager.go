@@ -385,6 +385,24 @@ func (m *AppManager) runningStatus(id string) (AppStatus, *runningApp, bool) {
 	return status, app, true
 }
 
+func (m *AppManager) HasLiveWindow(window wm.WindowSnapshot) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, app := range m.running {
+		if app == nil || app.manifest == nil || app.manifest.ID != window.AppID {
+			continue
+		}
+		target, err := managedWindowTargetFor(app.manifest, app.url, window.Path)
+		if err != nil {
+			continue
+		}
+		if target.host == window.Host && target.port == window.Port {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *AppManager) errorStatus(id string, status AppStatus, err error) (AppStatus, error) {
 	m.setError(id, err)
 	return errorAppStatus(status, err), err

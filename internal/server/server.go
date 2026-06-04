@@ -168,6 +168,7 @@ func (s *Server) handleWMWindows(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		windows := s.wm.Windows()
+		windows = s.liveWindows(windows)
 		sort.Slice(windows, func(i, j int) bool {
 			return windows[i].Placement.Z < windows[j].Placement.Z
 		})
@@ -205,6 +206,47 @@ func (s *Server) handleWMWindows(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) liveWindows(windows []wm.WindowSnapshot) []wm.WindowSnapshot {
+	if s.apps == nil {
+		s.consoleMu.Lock()
+		hasConsoleApps := len(s.consoleApps) > 0
+		s.consoleMu.Unlock()
+		if !hasConsoleApps {
+			return windows
+		}
+	}
+	live := make([]wm.WindowSnapshot, 0, len(windows))
+	for _, window := range windows {
+		if s.windowHasLiveProcess(window) {
+			live = append(live, window)
+			continue
+		}
+		_, _ = s.wm.ForgetWindow(window.ID)
+	}
+	return live
+}
+
+func (s *Server) windowHasLiveProcess(window wm.WindowSnapshot) bool {
+	if s.apps != nil && s.apps.HasLiveWindow(window) {
+		return true
+	}
+	s.consoleMu.Lock()
+	defer s.consoleMu.Unlock()
+	for _, app := range s.consoleApps {
+		if app == nil || app.manifest == nil || app.manifest.ID != window.AppID {
+			continue
+		}
+		target, err := managedWindowTargetFor(app.manifest, app.url, window.Path)
+		if err != nil {
+			continue
+		}
+		if target.host == window.Host && target.port == window.Port {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

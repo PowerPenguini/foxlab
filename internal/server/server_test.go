@@ -389,6 +389,35 @@ func TestShellWMWindowsEndpointPersistsLayout(t *testing.T) {
 	assertBodyMissing(t, shell, http.MethodGet, "/api/wm/windows", id)
 }
 
+func TestShellWMWindowsEndpointDropsDeadAppWindows(t *testing.T) {
+	manager := wm.NewManager()
+	shellServer := &Server{
+		wm:   manager,
+		mux:  http.NewServeMux(),
+		apps: NewAppManager(Config{AppDirs: []string{t.TempDir()}}, ""),
+	}
+	shellServer.shellRoutes()
+	shell := &http.Server{Handler: shellServer.mux}
+
+	_, err := manager.OpenWindow(context.Background(), &wm.OpenWindowRequest{
+		AppID: "files",
+		Name:  "Files",
+		Title: "Files",
+		Icon:  wm.Icon{Type: "builtin", Value: "folder"},
+		Host:  "127.0.0.1",
+		Port:  "49999",
+		Path:  "/?path=/tmp/demo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := wm.WindowID("files", "127.0.0.1", "49999", "/?path=/tmp/demo")
+	assertBodyMissing(t, shell, http.MethodGet, "/api/wm/windows", id)
+	if windows := manager.Windows(); len(windows) != 0 {
+		t.Fatalf("dead window was not purged: %+v", windows)
+	}
+}
+
 func TestTopologyKeepsConsoleProxyOutOfTopologyApp(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()

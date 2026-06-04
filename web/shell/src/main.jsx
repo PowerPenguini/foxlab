@@ -270,7 +270,8 @@ function App() {
     if (event.button !== 0) return;
     event.preventDefault();
     bringWindowToFront(item.id);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const captureTarget = event.currentTarget;
+    captureTarget.setPointerCapture?.(event.pointerId);
     const origin = { ...item.rect };
     let latestRect = origin;
     const startX = event.clientX;
@@ -289,7 +290,7 @@ function App() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      releasePointer(captureTarget, event.pointerId);
       persistWindowPlacement(item.id, { rect: latestRect });
     }
     window.addEventListener('pointermove', onMove);
@@ -303,7 +304,8 @@ function App() {
     event.preventDefault();
     event.stopPropagation();
     bringWindowToFront(item.id);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const captureTarget = event.currentTarget;
+    captureTarget.setPointerCapture?.(event.pointerId);
     setResizingWindowId(item.id);
     const origin = { ...item.rect };
     let latestRect = origin;
@@ -319,7 +321,7 @@ function App() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      releasePointer(captureTarget, event.pointerId);
       setResizingWindowId('');
       persistWindowPlacement(item.id, { rect: latestRect });
     }
@@ -602,6 +604,12 @@ function forgetWindow(windowId) {
   fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
     method: 'DELETE',
   }).catch(() => {});
+}
+
+function releasePointer(target, pointerId) {
+  if (!target?.releasePointerCapture) return;
+  if (target.hasPointerCapture && !target.hasPointerCapture(pointerId)) return;
+  target.releasePointerCapture(pointerId);
 }
 
 function windowPlacementPatch(patch = {}) {
