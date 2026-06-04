@@ -39,6 +39,7 @@ button {
   color: #d6d6d6;
   background: transparent;
   border: 0;
+  outline: 0;
   text-align: left;
   cursor: pointer;
 }
@@ -120,6 +121,7 @@ button:disabled {
   gap: 1ch;
   padding: 1px 8px;
   color: #d6d6d6;
+  outline: 0;
 }
 
 .file-row.selected {
