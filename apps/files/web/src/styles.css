@@ -122,7 +122,6 @@ button:disabled {
   color: #d6d6d6;
 }
 
-.file-row:hover,
 .file-row.selected {
   color: #050606;
   background: #c7cbc8;
@@ -149,12 +148,6 @@ button:disabled {
   color: #b9c0bc;
 }
 
-.file-row:hover .file-mode,
-.file-row:hover .file-links,
-.file-row:hover .file-owner,
-.file-row:hover .file-group,
-.file-row:hover .file-size,
-.file-row:hover .file-date,
 .file-row.selected .file-mode,
 .file-row.selected .file-links,
 .file-row.selected .file-owner,
@@ -168,7 +161,6 @@ button:disabled {
   color: #82d99a;
 }
 
-.file-row:hover .file-name.dir,
 .file-row.selected .file-name.dir {
   color: #050606;
 }
@@ -214,7 +206,6 @@ button:disabled {
   background: transparent;
 }
 
-.context-menu button:hover,
 .context-menu button:focus-visible {
   color: #050606;
   background: #c7cbc8;

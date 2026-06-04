@@ -19,6 +19,10 @@ function App() {
   }, [path]);
 
   useEffect(() => {
+    document.querySelector('.file-row.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
+  useEffect(() => {
     if (!contextMenu) return undefined;
     function close() {
       setContextMenu(null);
@@ -115,27 +119,29 @@ function App() {
 
   function handleKeyDown(event) {
     if (isEditing(event.target)) return;
-    if (event.key === 'ArrowDown') {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const key = event.key.toLowerCase();
+    if (key === 'arrowdown' || key === 'j') {
       event.preventDefault();
       moveSelection(1);
       return;
     }
-    if (event.key === 'ArrowUp') {
+    if (key === 'arrowup' || key === 'k') {
       event.preventDefault();
       moveSelection(-1);
       return;
     }
-    if (event.key === 'Enter') {
+    if (key === 'enter' || key === 'l') {
       event.preventDefault();
       activateEntry();
       return;
     }
-    if (event.key === 'Backspace') {
+    if (key === 'backspace' || key === 'h') {
       event.preventDefault();
       goParent();
       return;
     }
-    if (event.key === 'r') {
+    if (key === 'r') {
       event.preventDefault();
       loadPath(path, selected?.path);
     }
