@@ -94,7 +94,7 @@ function App() {
   }
 
   function moveSelection(delta) {
-    const entries = listing?.entries || [];
+    const entries = visibleEntries(listing);
     if (entries.length === 0) return;
     const current = entries.findIndex((entry) => entry.path === selected?.path);
     const next = clamp(Math.max(0, current) + delta, 0, entries.length - 1);
@@ -153,13 +153,13 @@ function App() {
     });
   }
 
-  const entries = listing?.entries || [];
-  const status = message || `${path} | ${entries.length} entries`;
+  const rawEntries = listing?.entries || [];
+  const entries = visibleEntries(listing);
+  const status = message || `${path} | ${rawEntries.length} entries`;
 
   return (
     <main className="files-app" tabIndex={0} onKeyDown={handleKeyDown} onContextMenu={blockContextMenu}>
       <header className="topbar">
-        <button onClick={goParent} disabled={!listing?.parent || listing.parent === path}>..</button>
         <label className="path-line">
           <span>path=</span>
           <input value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => {
@@ -203,7 +203,7 @@ function FileList({ entries, selected, onSelect, onOpen, onContextMenu }) {
           <span className="file-group">{entry.group || ''}</span>
           <span className="file-size">{formatLongSize(entry.size)}</span>
           <span className="file-date">{formatListTime(entry.modified)}</span>
-          <span className={`file-name ${entry.type}`}>{entry.type === 'dir' ? `${entry.name}/` : entry.name}</span>
+          <span className={`file-name ${entry.type}`}>{fileDisplayName(entry)}</span>
         </button>
       ))}
     </section>
@@ -260,6 +260,29 @@ function initialPath() {
   return value || '/';
 }
 
+function visibleEntries(listing) {
+  const entries = listing?.entries || [];
+  if (!listing?.parent || listing.parent === listing.path) {
+    return entries;
+  }
+  return [parentEntry(listing), ...entries];
+}
+
+function parentEntry(listing) {
+  return {
+    name: '..',
+    path: listing.parent,
+    type: 'dir',
+    size: 0,
+    mode: '',
+    links: '',
+    owner: '',
+    group: '',
+    modified: '',
+    parent: true,
+  };
+}
+
 function selectEntry(entries, preferredPath) {
   if (preferredPath) {
     const found = entries.find((entry) => entry.path === preferredPath);
@@ -270,6 +293,11 @@ function selectEntry(entries, preferredPath) {
 
 function isDiskImage(path) {
   return /\.(qcow2|raw|img)$/i.test(path || '');
+}
+
+function fileDisplayName(entry) {
+  if (entry.parent) return '..';
+  return entry.type === 'dir' ? `${entry.name}/` : entry.name;
 }
 
 function formatTime(value) {

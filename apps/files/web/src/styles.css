@@ -69,17 +69,6 @@ button:disabled {
   background: #050606;
 }
 
-.topbar button {
-  display: block;
-  color: #d6d6d6;
-  padding: 1px 4px;
-}
-
-.topbar button:hover:not(:disabled) {
-  color: #050606;
-  background: #c7cbc8;
-}
-
 .path-line {
   flex: 1;
   min-width: 0;
