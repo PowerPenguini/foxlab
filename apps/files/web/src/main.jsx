@@ -262,25 +262,8 @@ function initialPath() {
 
 function visibleEntries(listing) {
   const entries = listing?.entries || [];
-  if (!listing?.parent || listing.parent === listing.path) {
-    return entries;
-  }
-  return [parentEntry(listing), ...entries];
-}
-
-function parentEntry(listing) {
-  return {
-    name: '..',
-    path: listing.parent,
-    type: 'dir',
-    size: 0,
-    mode: '',
-    links: '',
-    owner: '',
-    group: '',
-    modified: '',
-    parent: true,
-  };
+  if (!listing?.parentEntry) return entries;
+  return [{ ...listing.parentEntry, parent: true }, ...entries];
 }
 
 function selectEntry(entries, preferredPath) {

@@ -140,12 +140,13 @@ type fileEntry struct {
 }
 
 type fsListResponse struct {
-	Path      string          `json:"path"`
-	Parent    string          `json:"parent"`
-	ReadOnly  bool            `json:"readOnly"`
-	Entries   []fileEntry     `json:"entries"`
-	Mounts    []*mountSession `json:"mounts"`
-	Workspace string          `json:"workspace"`
+	Path        string          `json:"path"`
+	Parent      string          `json:"parent"`
+	ParentEntry *fileEntry      `json:"parentEntry,omitempty"`
+	ReadOnly    bool            `json:"readOnly"`
+	Entries     []fileEntry     `json:"entries"`
+	Mounts      []*mountSession `json:"mounts"`
+	Workspace   string          `json:"workspace"`
 }
 
 type fsReadResponse struct {
@@ -260,13 +261,20 @@ func (a *filesApp) listFS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err, statusFor(err))
 		return
 	}
+	parent := parentPath(clean)
+	parentEntry, err := parentDirectoryEntry(clean, parent, a.pathReadOnly(parent))
+	if err != nil {
+		writeError(w, err, statusFor(err))
+		return
+	}
 	writeJSON(w, fsListResponse{
-		Path:      clean,
-		Parent:    parentPath(clean),
-		ReadOnly:  a.pathReadOnly(clean),
-		Entries:   entries,
-		Mounts:    a.mountList(),
-		Workspace: a.workspace,
+		Path:        clean,
+		Parent:      parent,
+		ParentEntry: parentEntry,
+		ReadOnly:    a.pathReadOnly(clean),
+		Entries:     entries,
+		Mounts:      a.mountList(),
+		Workspace:   a.workspace,
 	})
 }
 
@@ -840,23 +848,7 @@ func listDirectory(path string, readOnly bool) ([]fileEntry, error) {
 		if err != nil {
 			continue
 		}
-		kind := "file"
-		if info.IsDir() {
-			kind = "dir"
-		}
-		owner, group, links := fileOwnership(info)
-		out = append(out, fileEntry{
-			Name:     item.Name(),
-			Path:     filepath.Join(path, item.Name()),
-			Type:     kind,
-			Size:     info.Size(),
-			Mode:     info.Mode().String(),
-			Links:    links,
-			Owner:    owner,
-			Group:    group,
-			Modified: info.ModTime().Format(time.RFC3339),
-			ReadOnly: readOnly,
-		})
+		out = append(out, fileEntryFromInfo(item.Name(), filepath.Join(path, item.Name()), info, readOnly))
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Type != out[j].Type {
@@ -865,6 +857,38 @@ func listDirectory(path string, readOnly bool) ([]fileEntry, error) {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+func parentDirectoryEntry(path, parent string, readOnly bool) (*fileEntry, error) {
+	if parent == "" || parent == path {
+		return nil, nil
+	}
+	info, err := os.Stat(parent)
+	if err != nil {
+		return nil, err
+	}
+	entry := fileEntryFromInfo("..", parent, info, readOnly)
+	return &entry, nil
+}
+
+func fileEntryFromInfo(name, path string, info os.FileInfo, readOnly bool) fileEntry {
+	kind := "file"
+	if info.IsDir() {
+		kind = "dir"
+	}
+	owner, group, links := fileOwnership(info)
+	return fileEntry{
+		Name:     name,
+		Path:     path,
+		Type:     kind,
+		Size:     info.Size(),
+		Mode:     info.Mode().String(),
+		Links:    links,
+		Owner:    owner,
+		Group:    group,
+		Modified: info.ModTime().Format(time.RFC3339),
+		ReadOnly: readOnly,
+	}
 }
 
 func fileOwnership(info os.FileInfo) (string, string, uint64) {
