@@ -406,7 +406,7 @@ function App() {
       </div>
 
       {visibleWindows.map((item) => {
-        const windowTitle = `foxlab / ${item.appMeta.windowTitle}`;
+        const windowTitle = item.appMeta.windowTitle;
         const windowStyle = item.maximized
           ? { left: 8, top: 8, width: 'calc(100vw - 16px)', height: 'calc(100vh - 44px)', zIndex: item.z }
           : { left: item.rect.x, top: item.rect.y, width: item.rect.width, height: item.rect.height, zIndex: item.z };
