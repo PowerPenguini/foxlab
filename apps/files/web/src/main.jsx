@@ -7,25 +7,16 @@ function App() {
   const [pathInput, setPathInput] = useState(() => initialPath());
   const [listing, setListing] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [imageInfo, setImageInfo] = useState(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const preferredPathRef = useRef('');
-  const inspectTokenRef = useRef(0);
 
   useEffect(() => {
     const preferredPath = preferredPathRef.current;
     preferredPathRef.current = '';
     loadPath(path, preferredPath);
   }, [path]);
-
-  useEffect(() => {
-    const token = inspectTokenRef.current + 1;
-    inspectTokenRef.current = token;
-    inspectEntry(selected, token);
-  }, [selected]);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -54,8 +45,6 @@ function App() {
       setPath(data.path);
       setPathInput(data.path);
       setSelected(selectEntry(data.entries || [], preferredPath));
-      setPreview(null);
-      setImageInfo(null);
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -72,30 +61,6 @@ function App() {
     setPath(nextPath);
   }
 
-  async function inspectEntry(entry, token) {
-    setPreview(null);
-    setImageInfo(null);
-    if (!entry || entry.type !== 'file') return;
-
-    if (isDiskImage(entry.path)) {
-      try {
-        const data = await apiJSON(`/api/images/info?path=${encodeURIComponent(entry.path)}`);
-        if (token === inspectTokenRef.current) setImageInfo(data);
-      } catch (err) {
-        if (token === inspectTokenRef.current) setImageInfo({ error: err.message });
-      }
-      return;
-    }
-
-    if (entry.size > 1024 * 1024) return;
-    try {
-      const data = await apiJSON(`/api/fs/read?path=${encodeURIComponent(entry.path)}`);
-      if (token === inspectTokenRef.current) setPreview(data);
-    } catch (err) {
-      if (token === inspectTokenRef.current) setPreview({ error: err.message });
-    }
-  }
-
   async function mountImage(entry = selected) {
     if (!entry || !isDiskImage(entry.path)) return;
     setBusy(true);
@@ -107,22 +72,6 @@ function App() {
       });
       openPath(mount.path);
       setMessage('');
-    } catch (err) {
-      setMessage(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unmountImage(id) {
-    setBusy(true);
-    setMessage('');
-    try {
-      await apiJSON('/api/images/unmount', {
-        method: 'POST',
-        body: JSON.stringify({ id }),
-      });
-      openPath('/');
     } catch (err) {
       setMessage(err.message);
     } finally {
@@ -205,8 +154,6 @@ function App() {
   }
 
   const entries = listing?.entries || [];
-  const mounts = listing?.mounts || [];
-  const isImage = selected && isDiskImage(selected.path);
   const status = message || `${path} | ${entries.length} entries`;
 
   return (
@@ -225,16 +172,6 @@ function App() {
           onSelect={setSelected}
           onOpen={activateEntry}
           onContextMenu={openEntryContextMenu}
-        />
-        <DetailPanel
-          selected={selected}
-          preview={preview}
-          imageInfo={imageInfo}
-          isImage={isImage}
-          busy={busy}
-          mounts={mounts}
-          onMount={() => mountImage(selected)}
-          onUnmount={unmountImage}
         />
       </section>
 
@@ -267,65 +204,6 @@ function FileList({ entries, selected, onSelect, onOpen, onContextMenu }) {
         </button>
       ))}
     </section>
-  );
-}
-
-function DetailPanel({ selected, preview, imageInfo, isImage, busy, mounts, onMount, onUnmount }) {
-  return (
-    <aside className="detail-panel">
-      {!selected && <p className="empty">no selection</p>}
-      {selected && (
-        <section className="details">
-          <dl>
-            <dt>name</dt><dd>{selected.name}</dd>
-            <dt>path</dt><dd>{selected.path}</dd>
-            <dt>type</dt><dd>{selected.type}</dd>
-            <dt>size</dt><dd>{formatBytes(selected.size)}</dd>
-            {selected.mode && <><dt>mode</dt><dd>{selected.mode}</dd></>}
-          </dl>
-          {selected.type === 'file' && (
-            <a className="action" href={`/api/fs/download?path=${encodeURIComponent(selected.path)}`}>download</a>
-          )}
-          {isImage && <button className="action" onClick={onMount} disabled={busy}>mount read-only</button>}
-        </section>
-      )}
-
-      {imageInfo?.error && <p className="error">{imageInfo.error}</p>}
-      {imageInfo?.layers && (
-        <section className="details">
-          <div className="section-title">layers</div>
-          {imageInfo.layers.map((layer, index) => (
-            <div className="layer" key={layer.path}>
-              <strong>{index === 0 ? 'top' : `base ${index}`}</strong>
-              <span>{baseName(layer.path)}</span>
-              <small>{layer.format} {formatBytes(layer.actualSize)}</small>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {preview?.error && <p className="error">{preview.error}</p>}
-      {preview?.data && (
-        <section className="preview">
-          <pre>{preview.data}</pre>
-        </section>
-      )}
-
-      {mounts.length > 0 && (
-        <section className="details">
-          <div className="section-title">mounts</div>
-          {mounts.map((mount) => (
-            <div className="mount" key={mount.id}>
-              <span>
-                {baseName(mount.image)}
-                {mount.backend && <small>{mount.backend}</small>}
-              </span>
-              <button onClick={() => onUnmount(mount.id)}>unmount</button>
-            </div>
-          ))}
-        </section>
-      )}
-    </aside>
   );
 }
 
@@ -389,17 +267,6 @@ function selectEntry(entries, preferredPath) {
 
 function isDiskImage(path) {
   return /\.(qcow2|raw|img)$/i.test(path || '');
-}
-
-function baseName(path) {
-  return (path || '').split('/').filter(Boolean).pop() || '/';
-}
-
-function formatBytes(value = 0) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MiB`;
-  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
 
 function formatTime(value) {
