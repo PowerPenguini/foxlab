@@ -38,6 +38,7 @@ type Server struct {
 	mux         *http.ServeMux
 	apps        *AppManager
 	wm          *wm.Manager
+	labActionMu sync.Mutex
 	consoleMu   sync.Mutex
 	consoleApps []*launchedConsoleApp
 }
@@ -568,6 +569,9 @@ func (s *Server) saveLabFileResponse(w http.ResponseWriter, r *http.Request, pat
 }
 
 func (s *Server) applyLabFileResponse(w http.ResponseWriter, path string) {
+	s.labActionMu.Lock()
+	defer s.labActionMu.Unlock()
+
 	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))
@@ -593,6 +597,9 @@ func (s *Server) applyLabFileResponse(w http.ResponseWriter, path string) {
 }
 
 func (s *Server) destroyLabFileResponse(w http.ResponseWriter, path string) {
+	s.labActionMu.Lock()
+	defer s.labActionMu.Unlock()
+
 	loaded, err := lab.LoadFile(path)
 	if err != nil {
 		writeError(w, err, statusFor(err))

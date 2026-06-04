@@ -25,8 +25,10 @@ function App() {
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState('');
   const [messageKind, setMessageKind] = useState('info');
+  const [runningAction, setRunningAction] = useState('');
   const [commandMode, setCommandMode] = useState(false);
   const [commandText, setCommandText] = useState('');
+  const actionRunningRef = useRef(false);
   const commandInputRef = useRef(null);
 
   function showMessage(text, kind = 'info') {
@@ -103,11 +105,16 @@ function App() {
   }
 
   async function runAction(action) {
-    let target = lab;
+    if (actionRunningRef.current) return;
+    actionRunningRef.current = true;
+    setRunningAction(action);
     if (action === 'apply') {
       const saved = await saveLab(lab, { silent: true });
-      if (!saved) return;
-      target = saved;
+      if (!saved) {
+        actionRunningRef.current = false;
+        setRunningAction('');
+        return;
+      }
     }
     showMessage(`${action} started`);
     try {
@@ -117,6 +124,9 @@ function App() {
     } catch (err) {
       showMessage(err.message, 'error');
       refreshStatus();
+    } finally {
+      actionRunningRef.current = false;
+      setRunningAction('');
     }
   }
 
@@ -339,8 +349,8 @@ function App() {
               <button onClick={addVM}>./mk-vm</button>
               <button onClick={addSwitch}>./mk-switch</button>
               <button onClick={addExternalLink}>./mk-link</button>
-              <button onClick={() => runAction('apply')}>./apply</button>
-              <button onClick={destroyFromToolbar}>./destroy</button>
+              <button onClick={() => runAction('apply')} disabled={Boolean(runningAction)}>./apply</button>
+              <button onClick={destroyFromToolbar} disabled={Boolean(runningAction)}>./destroy</button>
             </nav>
           </header>
           <Topology lab={lab} status={status} selected={selected} setSelected={setSelected} moveNode={moveNode} connectNodes={connectNodes} />
