@@ -33,6 +33,7 @@ func TestShellAndTopologyAppsExposeSeparateRoutes(t *testing.T) {
 
 	assertStatus(t, shell, http.MethodGet, "/", http.StatusOK)
 	assertBodyContains(t, shell, http.MethodGet, "/", "Foxlab")
+	assertStatus(t, shell, http.MethodGet, "/favicon.ico", http.StatusNoContent)
 	assertStatus(t, shell, http.MethodGet, "/api/apps", http.StatusOK)
 	assertBodyContains(t, shell, http.MethodGet, "/api/apps", `"id":"topology"`)
 	assertStatus(t, shell, http.MethodGet, "/api/apps/topology", http.StatusOK)

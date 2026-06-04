@@ -1153,6 +1153,10 @@ func labFilePathFromRequest(r *http.Request) (string, error) {
 }
 
 func (s *Server) handleShellStatic(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/favicon.ico" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	serveStaticDir(w, r, filepath.Join("web", "dist"))
 }
 

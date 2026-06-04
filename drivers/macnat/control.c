@@ -445,7 +445,7 @@ static struct miscdevice foxlab_macnat_miscdev = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = FOXLAB_MACNAT_DEVICE,
 	.fops = &foxlab_macnat_fops,
-	.mode = 0600,
+	.mode = 0666,
 };
 
 int foxlab_register_control(void)
