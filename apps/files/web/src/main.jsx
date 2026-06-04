@@ -216,9 +216,6 @@ function App() {
         <input value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => {
           if (event.key === 'Enter') openPath(event.currentTarget.value);
         }} />
-        <button onClick={() => loadPath(path, selected?.path)} disabled={busy}>reload</button>
-        {listing?.workspace && <button onClick={() => openPath(listing.workspace)}>workspace</button>}
-        <button onClick={() => openPath(homePath())}>home</button>
       </header>
 
       <section className="workspace">
@@ -377,10 +374,6 @@ async function apiJSON(url, options = {}) {
 function initialPath() {
   const value = new URLSearchParams(window.location.search).get('path');
   return value || '/';
-}
-
-function homePath() {
-  return '/home';
 }
 
 function selectEntry(entries, preferredPath) {
