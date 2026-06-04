@@ -633,10 +633,12 @@ function placementRect(rect, index) {
 
 function persistWindowPlacement(windowId, patch) {
   if (!windowId || isSystemWindowID(windowId)) return;
+  const payload = windowPlacementPatch(patch);
+  if (Object.keys(payload).length === 0) return;
   fetch(`/api/wm/windows?id=${encodeURIComponent(windowId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(windowPlacementPatch(patch)),
+    body: JSON.stringify(payload),
   }).catch(() => {});
 }
 
@@ -659,11 +661,28 @@ function releasePointer(target, pointerId) {
 
 function windowPlacementPatch(patch = {}) {
   const out = {};
-  if (patch.rect) out.rect = patch.rect;
+  if (patch.rect) {
+    const rect = persistableWindowRect(patch.rect);
+    if (rect) out.rect = rect;
+  }
   if (typeof patch.maximized === 'boolean') out.maximized = patch.maximized;
   if (typeof patch.minimized === 'boolean') out.minimized = patch.minimized;
   if (Number.isFinite(patch.z)) out.z = patch.z;
   return out;
+}
+
+function persistableWindowRect(rect = {}) {
+  const x = Number(rect.x);
+  const y = Number(rect.y);
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height),
+  };
 }
 
 function FileIcon({ entry }) {
