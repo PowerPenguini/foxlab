@@ -23,6 +23,7 @@ function App() {
   const [startOpen, setStartOpen] = useState(false);
   const [desktopListing, setDesktopListing] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [errorDialog, setErrorDialog] = useState(null);
 
   useEffect(() => {
     apiJSON('/api/apps')
@@ -154,6 +155,7 @@ function App() {
     } catch (err) {
       setAppState('error');
       setMessage(err.message);
+      setErrorDialog({ title: 'open failed', message: err.message });
     } finally {
       setLaunching(false);
     }
@@ -448,6 +450,7 @@ function App() {
       )}
 
       <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
+      <ErrorDialog dialog={errorDialog} onClose={() => setErrorDialog(null)} />
     </div>
   );
 }
@@ -517,6 +520,22 @@ function ContextMenu({ menu, onClose }) {
         </button>
       ))}
     </div>
+  );
+}
+
+function ErrorDialog({ dialog, onClose }) {
+  if (!dialog) return null;
+  return (
+    <section className="error-dialog" role="alertdialog" aria-modal="true" aria-label={dialog.title}>
+      <header>
+        <span>{dialog.title}</span>
+        <button type="button" aria-label="Close" onClick={onClose}>x</button>
+      </header>
+      <p>{dialog.message}</p>
+      <footer>
+        <button type="button" onClick={onClose}>ok</button>
+      </footer>
+    </section>
   );
 }
 

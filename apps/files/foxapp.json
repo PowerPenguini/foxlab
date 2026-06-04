@@ -24,12 +24,6 @@
     {
       "kind": "directory",
       "openPath": "/?path={path}"
-    },
-    {
-      "kind": "file",
-      "fallback": true,
-      "openPath": "/?path={parent}",
-      "priority": -100
     }
   ]
 }

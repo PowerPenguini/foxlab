@@ -174,15 +174,14 @@ func TestShellControlOpenFileUsesManifestHandler(t *testing.T) {
 	}
 }
 
-func TestShellOpenFileMatchUsesDirectoryAndFallbackHandlers(t *testing.T) {
+func TestShellOpenFileMatchUsesDirectoryHandlersOnly(t *testing.T) {
 	chdirRepoRoot(t)
 	workspace := t.TempDir()
 	filePath := filepath.Join(workspace, "notes.txt")
 	writeTestFile(t, filePath, "notes")
 	appDir := t.TempDir()
 	packageManifestApp(t, appDir, "files", "Files", "folder", `[
-    {"kind":"directory","openPath":"/?path={path}"},
-    {"kind":"file","fallback":true,"openPath":"/?path={parent}","priority":-100}
+    {"kind":"directory","openPath":"/?path={path}"}
   ]`)
 	s := &Server{apps: NewAppManager(Config{AppDirs: []string{appDir}}, "127.0.0.1:1")}
 
@@ -202,12 +201,8 @@ func TestShellOpenFileMatchUsesDirectoryAndFallbackHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	match, err = s.openFileMatch(filePath, fileInfo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if match.def.ID != "files" || renderOpenFilePath(match.handler.OpenPath, filePath) != "/?path="+url.QueryEscape(workspace) {
-		t.Fatalf("unexpected fallback file match: %+v", match)
+	if _, err = s.openFileMatch(filePath, fileInfo); err == nil || !strings.Contains(err.Error(), "no app can open") {
+		t.Fatalf("unknown file extension should not fall back to Files, got %v", err)
 	}
 }
 
