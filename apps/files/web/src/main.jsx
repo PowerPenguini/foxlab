@@ -160,9 +160,12 @@ function App() {
     <main className="files-app" tabIndex={0} onKeyDown={handleKeyDown} onContextMenu={blockContextMenu}>
       <header className="topbar">
         <button onClick={goParent} disabled={!listing?.parent || listing.parent === path}>..</button>
-        <input value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => {
-          if (event.key === 'Enter') openPath(event.currentTarget.value);
-        }} />
+        <label className="path-line">
+          <span>path=</span>
+          <input value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => {
+            if (event.key === 'Enter') openPath(event.currentTarget.value);
+          }} />
+        </label>
       </header>
 
       <section className="workspace">

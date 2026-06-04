@@ -62,20 +62,16 @@ button:disabled {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 1ch;
   min-width: 0;
   padding: 4px 6px;
   border-bottom: 1px solid #3e4441;
   background: #050606;
 }
 
-.topbar button,
-.topbar input {
+.topbar button {
   display: block;
   color: #d6d6d6;
-}
-
-.topbar button {
   padding: 1px 4px;
 }
 
@@ -84,15 +80,32 @@ button:disabled {
   background: #c7cbc8;
 }
 
-.topbar input {
+.path-line {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  color: #8f9792;
+}
+
+.path-line span {
+  flex: 0 0 auto;
+  color: #f2f2f2;
+}
+
+.path-line input {
   flex: 1;
   min-width: 0;
   height: 20px;
-  padding: 1px 5px;
-  color: #f2f2f2;
-  background: #020303;
-  border: 1px solid #3e4441;
+  padding: 0;
+  color: #d6d6d6;
+  background: transparent;
+  border: 0;
   outline: none;
+}
+
+.path-line input:focus {
+  color: #f2f2f2;
 }
 
 .workspace {
