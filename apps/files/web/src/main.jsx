@@ -257,10 +257,13 @@ function FileList({ entries, selected, onSelect, onOpen, onContextMenu }) {
           onDoubleClick={() => onOpen(entry)}
           onContextMenu={(event) => onContextMenu(event, entry)}
         >
+          <span className="file-mode">{entry.mode || ''}</span>
+          <span className="file-links">{entry.links || 1}</span>
+          <span className="file-owner">{entry.owner || ''}</span>
+          <span className="file-group">{entry.group || ''}</span>
+          <span className="file-size">{formatLongSize(entry.size)}</span>
+          <span className="file-date">{formatListTime(entry.modified)}</span>
           <span className={`file-name ${entry.type}`}>{entry.type === 'dir' ? `${entry.name}/` : entry.name}</span>
-          <span>{entry.type}</span>
-          <span>{entry.type === 'dir' ? '' : formatBytes(entry.size)}</span>
-          <span>{formatTime(entry.modified)}</span>
         </button>
       ))}
     </section>
@@ -402,6 +405,26 @@ function formatBytes(value = 0) {
 function formatTime(value) {
   if (!value) return '';
   return value.replace('T', ' ').replace(/\+.*/, '').replace(/Z$/, '');
+}
+
+function formatLongSize(value = 0) {
+  return String(value || 0);
+}
+
+function formatListTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatTime(value);
+  const year = date.getFullYear();
+  const currentYear = new Date().getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  if (year !== currentYear) {
+    return `${year}-${month}-${day}`;
+  }
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}-${day} ${hours}:${minutes}`;
 }
 
 function isEditing(target) {

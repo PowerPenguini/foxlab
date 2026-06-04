@@ -117,11 +117,11 @@ button:disabled {
 
 .file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 70px 90px 160px;
+  grid-template-columns: 11ch 4ch 14ch 14ch 10ch 14ch minmax(180px, 1fr);
   align-items: center;
   width: 100%;
   min-height: 22px;
-  gap: 10px;
+  gap: 1ch;
   padding: 1px 8px;
   color: #d6d6d6;
 }
@@ -137,6 +137,35 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-links,
+.file-size {
+  text-align: right;
+}
+
+.file-mode,
+.file-links,
+.file-owner,
+.file-group,
+.file-size,
+.file-date {
+  color: #b9c0bc;
+}
+
+.file-row:hover .file-mode,
+.file-row:hover .file-links,
+.file-row:hover .file-owner,
+.file-row:hover .file-group,
+.file-row:hover .file-size,
+.file-row:hover .file-date,
+.file-row.selected .file-mode,
+.file-row.selected .file-links,
+.file-row.selected .file-owner,
+.file-row.selected .file-group,
+.file-row.selected .file-size,
+.file-row.selected .file-date {
+  color: #050606;
 }
 
 .file-name.dir {
@@ -275,10 +304,11 @@ dd {
   }
 
   .file-row {
-    grid-template-columns: minmax(160px, 1fr) 70px 90px;
+    grid-template-columns: 11ch 4ch 10ch 12ch minmax(160px, 1fr);
   }
 
-  .file-row span:last-child {
+  .file-owner,
+  .file-group {
     display: none;
   }
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -131,6 +132,9 @@ type fileEntry struct {
 	Type     string `json:"type"`
 	Size     int64  `json:"size"`
 	Mode     string `json:"mode"`
+	Links    uint64 `json:"links"`
+	Owner    string `json:"owner"`
+	Group    string `json:"group"`
 	Modified string `json:"modified"`
 	ReadOnly bool   `json:"readOnly,omitempty"`
 }
@@ -840,12 +844,16 @@ func listDirectory(path string, readOnly bool) ([]fileEntry, error) {
 		if info.IsDir() {
 			kind = "dir"
 		}
+		owner, group, links := fileOwnership(info)
 		out = append(out, fileEntry{
 			Name:     item.Name(),
 			Path:     filepath.Join(path, item.Name()),
 			Type:     kind,
 			Size:     info.Size(),
 			Mode:     info.Mode().String(),
+			Links:    links,
+			Owner:    owner,
+			Group:    group,
 			Modified: info.ModTime().Format(time.RFC3339),
 			ReadOnly: readOnly,
 		})
@@ -857,6 +865,24 @@ func listDirectory(path string, readOnly bool) ([]fileEntry, error) {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+func fileOwnership(info os.FileInfo) (string, string, uint64) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", "", 1
+	}
+	uid := strconv.FormatUint(uint64(stat.Uid), 10)
+	gid := strconv.FormatUint(uint64(stat.Gid), 10)
+	owner := uid
+	if resolved, err := user.LookupId(uid); err == nil && resolved.Username != "" {
+		owner = resolved.Username
+	}
+	group := gid
+	if resolved, err := user.LookupGroupId(gid); err == nil && resolved.Name != "" {
+		group = resolved.Name
+	}
+	return owner, group, uint64(stat.Nlink)
 }
 
 func cleanAnyPath(path string) (string, error) {
